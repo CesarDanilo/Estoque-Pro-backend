@@ -27,6 +27,14 @@ class Person extends Model
         'active',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'birth_date' => 'date',
+            'active' => 'boolean',
+        ];
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
