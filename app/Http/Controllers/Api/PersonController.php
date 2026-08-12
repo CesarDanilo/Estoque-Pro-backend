@@ -71,7 +71,8 @@ class PersonController extends Controller
     {
         abort_if($person->user_id !== $request->user()->id, 403, 'Acesso não autorizado.');
 
-        $validator = $this->validatePerson($request, $person->id);
+        // isUpdate = true -> valida só os campos que vierem no payload (PATCH parcial)
+        $validator = $this->validatePerson($request, $person->id, isUpdate: true);
 
         if ($validator->fails()) {
             return response()->json([
@@ -84,7 +85,7 @@ class PersonController extends Controller
 
         return response()->json([
             'message' => 'Pessoa atualizada com sucesso.',
-            'person' => $person,
+            'person' => $person->fresh(),
         ]);
     }
 
@@ -101,26 +102,34 @@ class PersonController extends Controller
 
     /**
      * Regras de validação compartilhadas entre store/update.
+     *
+     * No store, os campos obrigatórios usam 'required' (payload completo).
+     * No update, usam 'sometimes|required' — só são validados (e exigidos)
+     * se vierem no payload, permitindo updates parciais (ex: apenas 'active').
      */
-    private function validatePerson(Request $request, ?string $ignoreId = null)
+    private function validatePerson(Request $request, ?string $ignoreId = null, bool $isUpdate = false)
     {
+        // 'sometimes' primeiro: se o campo não vier no request, a regra inteira é ignorada.
+        // 'required' depois: se o campo vier, ele não pode vir vazio/nulo.
+        $requiredRule = $isUpdate ? ['sometimes', 'required'] : ['required'];
+
         return Validator::make($request->all(), [
-            'type' => ['required', 'in:individual,company'],
-            'name' => ['required', 'string', 'max:255'],
+            'type' => [...$requiredRule, 'in:individual,company'],
+            'name' => [...$requiredRule, 'string', 'max:255'],
             'document' => [
-                'required',
+                ...$requiredRule,
                 'string',
                 'max:20',
                 'unique:people,document' . ($ignoreId ? ",{$ignoreId}" : ''),
             ],
             'gender' => ['nullable', 'in:male,female,other'],
             'birth_date' => ['nullable', 'date'],
-            'phone' => ['required', 'string', 'max:20'],
-            'email' => ['required', 'email', 'max:255'],
+            'phone' => [...$requiredRule, 'string', 'max:20'],
+            'email' => [...$requiredRule, 'email', 'max:255'],
             'zip_code' => ['nullable', 'string', 'max:10'],
             'city' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
-            'active' => ['boolean'],
+            'active' => ['sometimes', 'boolean'],
         ]);
     }
 }
