@@ -23,5 +23,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('groups', GroupController::class);
     Route::apiResource('suppliers', SupplierController::class);
     Route::apiResource('products', ProductController::class);
-    Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('sales', SaleController::class);
 });

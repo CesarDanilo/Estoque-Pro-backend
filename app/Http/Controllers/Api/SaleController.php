@@ -17,16 +17,41 @@ class SaleController extends Controller
     ) {}
 
     /**
-     * Lista todas as vendas paginadas com filtros simples
+     * Lista todas as vendas paginadas com filtros (busca, status, pagamento e período)
      */
     public function index(Request $request): JsonResponse
     {
         $query = Sale::with(['customer', 'user'])
             ->latest();
 
-        if ($request->has('search')) {
+        // Filtro por Código ou Nome do Cliente
+        if ($request->filled('search')) {
             $search = $request->get('search');
-            $query->where('code', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                      $customerQuery->where('name', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // Filtro por Status
+        if ($request->filled('status') && $request->get('status') !== 'todos') {
+            $query->where('status', $request->get('status'));
+        }
+
+        // Filtro por Forma de Pagamento
+        if ($request->filled('payment_method') && $request->get('payment_method') !== 'todos') {
+            $query->where('payment_method', $request->get('payment_method'));
+        }
+
+        // Filtro por Período de Datas
+        if ($request->filled('start_date')) {
+            $query->whereDate('created_at', '>=', $request->get('start_date'));
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('created_at', '<=', $request->get('end_date'));
         }
 
         $sales = $query->paginate($request->get('per_page', 15));
@@ -62,5 +87,46 @@ class SaleController extends Controller
         $sale = Sale::with(['items.product', 'customer', 'user'])->findOrFail($id);
 
         return response()->json($sale);
+    }
+
+    /**
+     * Atualiza uma venda / altera o status
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        try {
+            $sale = Sale::findOrFail($id);
+
+            // Atualiza apenas os campos enviados (ex: status, payment_method)
+            $sale->update($request->only(['status', 'payment_method', 'total']));
+
+            return response()->json([
+                'message' => 'Venda atualizada com sucesso!',
+                'data'    => $sale,
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Erro ao atualizar a venda: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Remove uma venda do sistema
+     */
+    public function destroy(string $id): JsonResponse
+    {
+        try {
+            $sale = Sale::findOrFail($id);
+            $sale->delete();
+
+            return response()->json([
+                'message' => 'Venda excluída com sucesso!',
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Erro ao excluir venda: ' . $e->getMessage(),
+            ], 422);
+        }
     }
 }

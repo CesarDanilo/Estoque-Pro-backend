@@ -43,7 +43,7 @@ return new class extends Migration
             $table->string('payment_method', 50);
 
             // Status da Venda
-            $table->enum('status', ['completed', 'cancelled'])->default('completed');
+            $table->enum('status', ['completed', 'pending', 'cancelled'])->default('pending');
 
             // Observações
             $table->text('notes')->nullable();
