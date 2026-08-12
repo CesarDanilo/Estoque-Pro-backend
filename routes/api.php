@@ -3,6 +3,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PersonController;
 use App\Http\Controllers\Api\GroupController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\ProductController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -20,4 +21,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('person', PersonController::class);
     Route::apiResource('groups', GroupController::class);
     Route::apiResource('suppliers', SupplierController::class);
+    Route::apiResource('products', ProductController::class);
 });
