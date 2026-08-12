@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Group;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule; // <-- IMPORTANTE: Importar a classe Rule
 
 class GroupController extends Controller
 {
@@ -30,10 +31,23 @@ class GroupController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $userId = $request->user()->id;
+
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                // Garante que o nome seja único apenas entre os registros do próprio usuário
+                Rule::unique('groups', 'name')->where(function ($query) use ($userId) {
+                    return $query->where('user_id', $userId);
+                }),
+            ],
             'description' => ['nullable', 'string'],
             'active' => ['boolean'],
+        ], [
+            // Opcional: Mensagem personalizada de erro
+            'name.unique' => 'Você já possui um grupo cadastrado com este nome.',
         ]);
 
         $group = $request->user()->groups()->create([
@@ -53,7 +67,6 @@ class GroupController extends Controller
      */
     public function show(Request $request, Group $group): JsonResponse
     {
-        // Garante que o usuário só possa ver seus próprios grupos
         if ($group->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
@@ -72,10 +85,25 @@ class GroupController extends Controller
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 
+        $userId = $request->user()->id;
+
         $validated = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'name' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                // Ignora o ID do próprio grupo na verificação de nome único
+                Rule::unique('groups', 'name')
+                    ->where(function ($query) use ($userId) {
+                        return $query->where('user_id', $userId);
+                    })
+                    ->ignore($group->id),
+            ],
             'description' => ['nullable', 'string'],
             'active' => ['boolean'],
+        ], [
+            'name.unique' => 'Você já possui um grupo cadastrado com este nome.',
         ]);
 
         $group->update($validated);
