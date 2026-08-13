@@ -359,15 +359,20 @@ class ReportController extends Controller
                 $q->whereNull('gender')->orWhereNotIn('gender', ['M', 'F']);
             })->count();
 
+        $driver = DB::getDriverName();
+        $ageExpression = $driver === 'pgsql' 
+            ? "EXTRACT(YEAR FROM AGE(birth_date))" 
+            : "TIMESTAMPDIFF(YEAR, birth_date, CURDATE())";
+
         $faixasEtarias = DB::table('people')
             ->where('user_id', $userId)
             ->select(
                 DB::raw("
-                    COUNT(CASE WHEN birth_date IS NOT NULL AND EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 18 AND 25 THEN 1 END) as f_18_25,
-                    COUNT(CASE WHEN birth_date IS NOT NULL AND EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 26 AND 35 THEN 1 END) as f_26_35,
-                    COUNT(CASE WHEN birth_date IS NOT NULL AND EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 36 AND 45 THEN 1 END) as f_36_45,
-                    COUNT(CASE WHEN birth_date IS NOT NULL AND EXTRACT(YEAR FROM AGE(birth_date)) BETWEEN 46 AND 60 THEN 1 END) as f_46_60,
-                    COUNT(CASE WHEN birth_date IS NOT NULL AND EXTRACT(YEAR FROM AGE(birth_date)) > 60 THEN 1 END) as f_60_plus,
+                    COUNT(CASE WHEN birth_date IS NOT NULL AND {$ageExpression} BETWEEN 18 AND 25 THEN 1 END) as f_18_25,
+                    COUNT(CASE WHEN birth_date IS NOT NULL AND {$ageExpression} BETWEEN 26 AND 35 THEN 1 END) as f_26_35,
+                    COUNT(CASE WHEN birth_date IS NOT NULL AND {$ageExpression} BETWEEN 36 AND 45 THEN 1 END) as f_36_45,
+                    COUNT(CASE WHEN birth_date IS NOT NULL AND {$ageExpression} BETWEEN 46 AND 60 THEN 1 END) as f_46_60,
+                    COUNT(CASE WHEN birth_date IS NOT NULL AND {$ageExpression} > 60 THEN 1 END) as f_60_plus,
                     COUNT(CASE WHEN birth_date IS NULL THEN 1 END) as nao_informado
                 ")
             )
