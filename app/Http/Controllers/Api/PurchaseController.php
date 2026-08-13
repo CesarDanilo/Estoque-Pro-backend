@@ -21,8 +21,11 @@ class PurchaseController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Purchase::with(['supplier', 'user'])
-            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+        $userId = auth()->id();
+
+        // 🚀 CORREÇÃO 1: Carrega 'items' e 'items.product' para ter acesso aos itens na listagem
+        $query = Purchase::with(['supplier', 'user', 'items', 'items.product'])
+            ->where('user_id', $userId) // 🔒 escopo por usuário logado
             ->withCount('items')
             ->latest();
 
@@ -56,9 +59,18 @@ class PurchaseController extends Controller
             $query->whereDate('created_at', '<=', $request->get('end_date'));
         }
 
+        // 🚀 CORREÇÃO 2: Calcula o total de compras aguardando recebimento ('pending')
+        $pendingCount = Purchase::where('user_id', $userId)
+            ->where('status', 'pending')
+            ->count();
+
         $purchases = $query->paginate($request->get('per_page', 15));
 
-        return response()->json($purchases);
+        // Anexa o pending_count à resposta JSON
+        $response = $purchases->toArray();
+        $response['pending_count'] = $pendingCount;
+
+        return response()->json($response);
     }
 
     /**
@@ -87,20 +99,19 @@ class PurchaseController extends Controller
     public function show(string $id): JsonResponse
     {
         $purchase = Purchase::with(['items.product', 'supplier', 'user'])
-            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+            ->where('user_id', auth()->id())
             ->findOrFail($id);
 
         return response()->json($purchase);
     }
 
     /**
-     * Atualiza uma compra (mesmo padrão de duas frentes usado em Vendas:
-     * edição completa com itens, ou update parcial só de status).
+     * Atualiza uma compra
      */
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $purchase = Purchase::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+            $purchase = Purchase::where('user_id', auth()->id())
                 ->findOrFail($id);
 
             if ($request->has('items')) {
@@ -152,7 +163,7 @@ class PurchaseController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
-            $purchase = Purchase::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+            $purchase = Purchase::where('user_id', auth()->id())
                 ->findOrFail($id);
             $purchase->delete();
 
