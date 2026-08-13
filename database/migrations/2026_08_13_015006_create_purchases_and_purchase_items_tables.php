@@ -19,10 +19,10 @@ return new class extends Migration
             $table->string('code', 20)->unique();
 
             // Relacionamento com Fornecedores (UUID)
+            // Removido nullable() e alterado para restrictOnDelete() para impedir a exclusão do fornecedor caso existam compras associadas
             $table->foreignUuid('supplier_id')
-                ->nullable()
                 ->constrained('suppliers')
-                ->nullOnDelete();
+                ->restrictOnDelete();
 
             // Relacionamento com Usuário / Responsável pela entrada (UUID)
             $table->foreignUuid('user_id')
