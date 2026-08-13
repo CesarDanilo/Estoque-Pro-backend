@@ -2,14 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Group extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory;
 
     protected $fillable = [
         'user_id',
@@ -18,15 +18,17 @@ class Group extends Model
         'active',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'active' => 'boolean',
-        ];
-    }
+    protected $casts = [
+        'active' => 'boolean',
+    ];
 
     public function user(): BelongsTo
     {
-        return $table->belongsTo(User::class);
+        return $this->belongsTo(User::class);
+    }
+
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class, 'group_id');
     }
 }
