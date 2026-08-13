@@ -16,12 +16,14 @@ class SupplierController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('trade_name', 'like', "%{$search}%")
-                  ->orWhere('document', 'like', "%{$search}%");
+                ->orWhere('trade_name', 'like', "%{$search}%")
+                ->orWhere('document', 'like', "%{$search}%");
             });
         }
 
-        $suppliers = $query->orderBy('name', 'asc')->get();
+        $perPage = (int) $request->input('per_page', 15);
+
+        $suppliers = $query->orderBy('name', 'asc')->paginate($perPage);
 
         return response()->json($suppliers);
     }
