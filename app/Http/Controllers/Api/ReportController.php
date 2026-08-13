@@ -17,16 +17,42 @@ use Illuminate\Support\Facades\Schema;
 class ReportController extends Controller
 {
     /**
-     * Auxiliar para obter os dias conforme o filtro do front-end (7d, 30d, 90d)
+     * Auxiliar unificado para obter o intervalo de datas (presets, dia específico ou período)
      */
-    private function getPeriodDays(Request $request): int
+    private function getDateRange(Request $request): array
     {
         $period = $request->input('period', '7d');
-        return match ($period) {
+        $tipo = $request->input('tipo');
+
+        if ($tipo === 'dia' && $request->filled('data')) {
+            $date = Carbon::parse($request->input('data'));
+            return [
+                $date->copy()->startOfDay(),
+                $date->copy()->endOfDay()
+            ];
+        }
+
+        if ($tipo === 'periodo' && $request->filled('inicio') && $request->filled('fim')) {
+            return [
+                Carbon::parse($request->input('inicio'))->startOfDay(),
+                Carbon::parse($request->input('fim'))->endOfDay()
+            ];
+        }
+
+        if ($period === 'este_mes') {
+            return [Carbon::now()->startOfMonth(), Carbon::now()->endOfDay()];
+        }
+        if ($period === 'mes_anterior') {
+            return [Carbon::now()->subMonth()->startOfMonth(), Carbon::now()->subMonth()->endOfMonth()];
+        }
+
+        $days = match ($period) {
             '30d' => 30,
             '90d' => 90,
             default => 7,
         };
+
+        return [Carbon::now()->subDays($days)->startOfDay(), Carbon::now()->endOfDay()];
     }
 
     /**
@@ -40,11 +66,11 @@ class ReportController extends Controller
                 return $column;
             }
         }
-        return 'id'; // fallback de segurança
+        return 'id';
     }
 
     /**
-     * Descobre dinamicamente a coluna de data (sale_date/purchase_date/date/created_at)
+     * Descobre dinamicamente a coluna de data
      */
     private function getDateColumn(string $table, string $preferred): string
     {
@@ -63,14 +89,14 @@ class ReportController extends Controller
     public function sales(Request $request): JsonResponse
     {
         $userId = $request->user()->id;
-        $days = $this->getPeriodDays($request);
-        $startDate = Carbon::now()->subDays($days)->startOfDay();
+        [$startDate, $endDate] = $this->getDateRange($request);
+        $days = $startDate->diffInDays($endDate) ?: 1;
 
         $totalCol = $this->getTotalColumn('sales');
         $dateCol = $this->getDateColumn('sales', 'sale_date');
 
         $salesQuery = Sale::where('user_id', $userId)
-            ->where($dateCol, '>=', $startDate);
+            ->whereBetween($dateCol, [$startDate, $endDate]);
 
         // --- Cards Superiores ---
         $faturamento = (clone $salesQuery)
@@ -83,13 +109,13 @@ class ReportController extends Controller
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->where('sales.user_id', $userId)
             ->where('sales.status', 'completed')
-            ->where("sales.{$dateCol}", '>=', $startDate)
+            ->whereBetween("sales.{$dateCol}", [$startDate, $endDate])
             ->sum('sale_items.quantity') ?? 0;
 
         $produtosComVenda = DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->where('sales.user_id', $userId)
-            ->where("sales.{$dateCol}", '>=', $startDate)
+            ->whereBetween("sales.{$dateCol}", [$startDate, $endDate])
             ->pluck('sale_items.product_id');
 
         $produtosSemVenda = Product::where('user_id', $userId)
@@ -100,7 +126,7 @@ class ReportController extends Controller
         // --- Gráfico: Vendas por dia ---
         $chartData = Sale::where('user_id', $userId)
             ->where('status', 'completed')
-            ->where($dateCol, '>=', $startDate)
+            ->whereBetween($dateCol, [$startDate, $endDate])
             ->select(
                 DB::raw("DATE({$dateCol}) as data"),
                 DB::raw("SUM({$totalCol}) as valor")
@@ -121,7 +147,7 @@ class ReportController extends Controller
             ->leftJoin('groups', 'groups.id', '=', 'products.group_id')
             ->where('sales.user_id', $userId)
             ->where('sales.status', 'completed')
-            ->where("sales.{$dateCol}", '>=', $startDate)
+            ->whereBetween("sales.{$dateCol}", [$startDate, $endDate])
             ->select(
                 DB::raw("COALESCE(groups.name, 'Outros') as grupo"),
                 DB::raw("SUM({$itemTotalCol}) as total")
@@ -130,13 +156,13 @@ class ReportController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        // --- Ranking: Produtos mais vendidos (Sem limite) ---
+        // --- Ranking: Produtos mais vendidos ---
         $produtosMaisVendidos = DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->join('products', 'products.id', '=', 'sale_items.product_id')
             ->where('sales.user_id', $userId)
             ->where('sales.status', 'completed')
-            ->where("sales.{$dateCol}", '>=', $startDate)
+            ->whereBetween("sales.{$dateCol}", [$startDate, $endDate])
             ->select(
                 'products.id',
                 'products.name',
@@ -173,31 +199,28 @@ class ReportController extends Controller
     public function purchases(Request $request): JsonResponse
     {
         $userId = $request->user()->id;
-        $days = $this->getPeriodDays($request);
-        $startDate = Carbon::now()->subDays($days)->startOfDay();
+        [$startDate, $endDate] = $this->getDateRange($request);
 
         $totalCol = $this->getTotalColumn('purchases');
         $dateCol = $this->getDateColumn('purchases', 'purchase_date');
 
         $purchasesQuery = Purchase::where('user_id', $userId)
-            ->where($dateCol, '>=', $startDate);
+            ->whereBetween($dateCol, [$startDate, $endDate]);
 
         $totalComprado = (clone $purchasesQuery)->sum($totalCol) ?? 0;
         $comprasNoPeriodo = (clone $purchasesQuery)->count();
 
-        // Produtos em Nível Crítico / Reposição
         $produtosARepor = Product::where('user_id', $userId)
             ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->count();
 
-        // Compras por Fornecedor
         $supplierJoinCol = Schema::hasColumn('purchases', 'supplier_id') ? 'purchases.supplier_id' : null;
         $personJoinCol = Schema::hasColumn('purchases', 'person_id') ? 'purchases.person_id' : null;
 
         $comprasPorFornecedorQuery = DB::table('purchases')
             ->where('purchases.user_id', $userId)
-            ->where("purchases.{$dateCol}", '>=', $startDate);
+            ->whereBetween("purchases.{$dateCol}", [$startDate, $endDate]);
 
         if ($supplierJoinCol) {
             $comprasPorFornecedorQuery->leftJoin('suppliers', 'suppliers.id', '=', 'purchases.supplier_id');
@@ -220,7 +243,6 @@ class ReportController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        // Produtos Vendidos que Precisam de Reposição
         $produtosReposicaoLista = Product::where('user_id', $userId)
             ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
@@ -253,10 +275,8 @@ class ReportController extends Controller
     public function products(Request $request): JsonResponse
     {
         $userId = $request->user()->id;
-
         $totalProdutos = Product::where('user_id', $userId)->count();
 
-        // Distribuição de Produtos por Grupo
         $produtosPorGrupo = DB::table('products')
             ->leftJoin('groups', 'groups.id', '=', 'products.group_id')
             ->where('products.user_id', $userId)
@@ -275,7 +295,6 @@ class ReportController extends Controller
                 ];
             });
 
-        // Situação do Estoque
         $estoqueNormal = Product::where('user_id', $userId)
             ->where('stock_quantity', '>', DB::raw('min_stock_quantity'))
             ->count();
@@ -289,7 +308,6 @@ class ReportController extends Controller
             ->where('stock_quantity', '<=', 0)
             ->count();
 
-        // Ativos x Inativos
         $ativos = Product::where('user_id', $userId)->where('active', true)->count();
         $inativos = Product::where('user_id', $userId)->where('active', false)->count();
 
@@ -320,7 +338,6 @@ class ReportController extends Controller
     {
         $userId = $request->user()->id;
 
-        // Pessoas por Tipo/Grupo
         $clientesQtd = Person::where('user_id', $userId)->where('type', 'client')->count();
         $fornecedoresQtd = Person::where('user_id', $userId)->where('type', 'supplier')->count();
         $colaboradoresQtd = Person::where('user_id', $userId)->where('type', 'employee')->count();
@@ -335,7 +352,6 @@ class ReportController extends Controller
             ['grupo' => 'Colaborador', 'quantidade' => $colaboradoresQtd],
         ];
 
-        // Pessoas por Gênero
         $generoFeminino = Person::where('user_id', $userId)->where('gender', 'F')->count();
         $generoMasculino = Person::where('user_id', $userId)->where('gender', 'M')->count();
         $generoNaoInformado = Person::where('user_id', $userId)
@@ -343,7 +359,6 @@ class ReportController extends Controller
                 $q->whereNull('gender')->orWhereNotIn('gender', ['M', 'F']);
             })->count();
 
-        // Faixa Etária via PostgreSQL
         $faixasEtarias = DB::table('people')
             ->where('user_id', $userId)
             ->select(
