@@ -40,6 +40,11 @@ class Supplier extends Model
     {
         return $this->belongsTo(User::class);
     }
+    
+    public function purchases(): HasMany
+    {
+        return $this->hasMany(Purchase::class);
+    }
 
     // Comentado temporariamente até criarmos a Model Product
     // public function products(): HasMany
