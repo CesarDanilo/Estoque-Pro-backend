@@ -14,27 +14,48 @@ use Carbon\Carbon;
 class DashboardController extends Controller
 {
     /**
+     * Timezone de referência para "hoje", "ontem", etc.
+     * Ajuste se seu app não for pt-BR / America/Sao_Paulo.
+     */
+    private const TZ = 'America/Sao_Paulo';
+
+    /**
+     * Aplica o filtro "não cancelada" tratando status NULL como válido.
+     * != 'cancelled' em SQL descarta linhas com status NULL — isso corrige isso.
+     */
+    private function scopeNaoCancelada($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('status')
+              ->orWhere('status', '!=', 'cancelled');
+        });
+    }
+
+    /**
      * Retorna o resumo de métricas dos Cards superiores
      */
     public function summary(): JsonResponse
     {
-        $hoje = Carbon::today();
+        // Início e fim do dia no timezone local, convertidos para UTC
+        // (assumindo que created_at é salvo em UTC, padrão do Laravel/Postgres)
+        $inicioHoje = Carbon::now(self::TZ)->startOfDay()->utc();
+        $fimHoje    = Carbon::now(self::TZ)->endOfDay()->utc();
 
         // 1. Vendas de Hoje
-        $vendasHoje = Sale::whereDate('created_at', $hoje)
-            ->where('status', '!=', 'cancelled')
+        $vendasHojeQuery = Sale::whereBetween('created_at', [$inicioHoje, $fimHoje]);
+        $vendasHoje = $this->scopeNaoCancelada($vendasHojeQuery)
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
             ->first();
 
         // 2. Total Geral de Vendas
-        $totalVendas = Sale::where('status', '!=', 'cancelled')
+        $totalVendas = $this->scopeNaoCancelada(Sale::query())
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
             ->first();
 
         // 3. Contagem de Produtos
         $produtosTotal = Product::count();
         $produtosAtivos = Product::where('active', true)->count();
-        
+
         $estoqueBaixo = Product::where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->count();
@@ -63,21 +84,21 @@ class DashboardController extends Controller
     {
         $days = (int) $request->get('days', 30);
         $limit = (int) $request->get('limit', 5);
-        $startDate = Carbon::now()->subDays($days);
+        $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
 
-        // Expressão compatível com PostgreSQL para calcular total
         $itemTotalExpr = 'COALESCE(sale_items.quantity * sale_items.unit_price, 0)';
 
-        $topProducts = SaleItem::query()
+        $query = SaleItem::query()
             ->select(
                 'sale_items.product_id',
                 DB::raw('SUM(sale_items.quantity) as total_quantity'),
                 DB::raw("CAST(SUM({$itemTotalExpr}) AS DECIMAL(10,2)) as total_amount")
             )
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-            ->where('sales.status', '!=', 'cancelled')
             ->where('sales.created_at', '>=', $startDate)
-            ->whereNotNull('sale_items.product_id')
+            ->whereNotNull('sale_items.product_id');
+
+        $topProducts = $this->scopeNaoCancelada($query)
             ->groupBy('sale_items.product_id')
             ->orderByRaw('SUM(sale_items.quantity) DESC')
             ->limit($limit)
@@ -93,12 +114,11 @@ class DashboardController extends Controller
     public function salesByGroup(Request $request): JsonResponse
     {
         $days = (int) $request->get('days', 30);
-        $startDate = Carbon::now()->subDays($days);
+        $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
 
-        // Expressão compatível com PostgreSQL para calcular total
         $itemTotalExpr = 'COALESCE(sale_items.quantity * sale_items.unit_price, 0)';
 
-        $salesByGroup = SaleItem::query()
+        $query = SaleItem::query()
             ->select(
                 'groups.id as group_id',
                 DB::raw('MAX(groups.name) as grupo'),
@@ -107,8 +127,9 @@ class DashboardController extends Controller
             ->join('products', 'products.id', '=', 'sale_items.product_id')
             ->join('groups', 'groups.id', '=', 'products.group_id')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-            ->where('sales.status', '!=', 'cancelled')
-            ->where('sales.created_at', '>=', $startDate)
+            ->where('sales.created_at', '>=', $startDate);
+
+        $salesByGroup = $this->scopeNaoCancelada($query)
             ->groupBy('groups.id')
             ->orderByRaw("SUM({$itemTotalExpr}) DESC")
             ->get();
@@ -122,16 +143,21 @@ class DashboardController extends Controller
     public function dailySales(Request $request): JsonResponse
     {
         $days = (int) $request->get('days', 15);
-        $startDate = Carbon::now()->subDays($days)->startOfDay();
+        $startDate = Carbon::now(self::TZ)->subDays($days)->startOfDay()->utc();
 
-        $vendas = Sale::select(
-                DB::raw('DATE(created_at) as data'),
+        // Agrupa convertendo created_at (UTC) para o timezone local antes de extrair a data,
+        // senão vendas feitas à noite "vazam" para o dia seguinte no agrupamento.
+        $dataLocalExpr = "DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE '" . self::TZ . "')";
+
+        $query = Sale::select(
+                DB::raw("{$dataLocalExpr} as data"),
                 DB::raw('CAST(SUM(total) AS DECIMAL(10,2)) as total'),
                 DB::raw('COUNT(*) as count')
             )
-            ->where('status', '!=', 'cancelled')
-            ->where('created_at', '>=', $startDate)
-            ->groupBy(DB::raw('DATE(created_at)'))
+            ->where('created_at', '>=', $startDate);
+
+        $vendas = $this->scopeNaoCancelada($query)
+            ->groupBy(DB::raw($dataLocalExpr))
             ->orderBy('data', 'ASC')
             ->get();
 
@@ -144,11 +170,10 @@ class DashboardController extends Controller
     public function productsWithoutSales(Request $request): JsonResponse
     {
         $days = (int) $request->get('days', 30);
-        $startDate = Carbon::now()->subDays($days);
+        $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
 
         $soldProductIds = SaleItem::whereHas('sale', function ($q) use ($startDate) {
-            $q->where('status', '!=', 'cancelled')
-              ->where('created_at', '>=', $startDate);
+            $this->scopeNaoCancelada($q)->where('created_at', '>=', $startDate);
         })->pluck('product_id')->filter()->unique();
 
         $products = Product::where('active', true)
