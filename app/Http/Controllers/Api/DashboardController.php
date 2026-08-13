@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Illuminate\Http\JsonResponse;
@@ -32,31 +33,62 @@ class DashboardController extends Controller
     }
 
     /**
+     * Retorna o ID do usuário autenticado.
+     * Centralizado aqui para facilitar manutenção/troca de estratégia de auth.
+     */
+    private function userId(): string|int
+    {
+        return auth()->id();
+    }
+
+    /**
      * Retorna o resumo de métricas dos Cards superiores
      */
     public function summary(): JsonResponse
     {
+        $userId = $this->userId();
+
         // Início e fim do dia no timezone local, convertidos para UTC
         // (assumindo que created_at é salvo em UTC, padrão do Laravel/Postgres)
         $inicioHoje = Carbon::now(self::TZ)->startOfDay()->utc();
         $fimHoje    = Carbon::now(self::TZ)->endOfDay()->utc();
 
         // 1. Vendas de Hoje
-        $vendasHojeQuery = Sale::whereBetween('created_at', [$inicioHoje, $fimHoje]);
+        $vendasHojeQuery = Sale::where('user_id', $userId)
+            ->whereBetween('created_at', [$inicioHoje, $fimHoje]);
         $vendasHoje = $this->scopeNaoCancelada($vendasHojeQuery)
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
             ->first();
 
         // 2. Total Geral de Vendas
-        $totalVendas = $this->scopeNaoCancelada(Sale::query())
+        $totalVendas = $this->scopeNaoCancelada(
+                Sale::where('user_id', $userId)
+            )
             ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
             ->first();
 
-        // 3. Contagem de Produtos
-        $produtosTotal = Product::count();
-        $produtosAtivos = Product::where('active', true)->count();
+        // 3. Compras de Hoje
+        $comprasHojeQuery = Purchase::where('user_id', $userId)
+            ->whereBetween('created_at', [$inicioHoje, $fimHoje]);
+        $comprasHoje = $this->scopeNaoCancelada($comprasHojeQuery)
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
+            ->first();
 
-        $estoqueBaixo = Product::where('active', true)
+        // 4. Total Geral de Compras
+        $totalCompras = $this->scopeNaoCancelada(
+                Purchase::where('user_id', $userId)
+            )
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(total), 0) as total')
+            ->first();
+
+        // 5. Contagem de Produtos
+        $produtosTotal = Product::where('user_id', $userId)->count();
+        $produtosAtivos = Product::where('user_id', $userId)
+            ->where('active', true)
+            ->count();
+
+        $estoqueBaixo = Product::where('user_id', $userId)
+            ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->count();
 
@@ -68,6 +100,14 @@ class DashboardController extends Controller
             'total_vendas' => [
                 'total' => (float) ($totalVendas->total ?? 0),
                 'count' => (int) ($totalVendas->count ?? 0),
+            ],
+            'compras_hoje' => [
+                'total' => (float) ($comprasHoje->total ?? 0),
+                'count' => (int) ($comprasHoje->count ?? 0),
+            ],
+            'total_compras' => [
+                'total' => (float) ($totalCompras->total ?? 0),
+                'count' => (int) ($totalCompras->count ?? 0),
             ],
             'produtos' => [
                 'total'         => $produtosTotal,
@@ -82,6 +122,7 @@ class DashboardController extends Controller
      */
     public function topProducts(Request $request): JsonResponse
     {
+        $userId = $this->userId();
         $days = (int) $request->get('days', 30);
         $limit = (int) $request->get('limit', 5);
         $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
@@ -95,6 +136,7 @@ class DashboardController extends Controller
                 DB::raw("CAST(SUM({$itemTotalExpr}) AS DECIMAL(10,2)) as total_amount")
             )
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sales.user_id', $userId) // 🔒 escopo por usuário logado
             ->where('sales.created_at', '>=', $startDate)
             ->whereNotNull('sale_items.product_id');
 
@@ -113,6 +155,7 @@ class DashboardController extends Controller
      */
     public function salesByGroup(Request $request): JsonResponse
     {
+        $userId = $this->userId();
         $days = (int) $request->get('days', 30);
         $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
 
@@ -127,6 +170,7 @@ class DashboardController extends Controller
             ->join('products', 'products.id', '=', 'sale_items.product_id')
             ->join('groups', 'groups.id', '=', 'products.group_id')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sales.user_id', $userId) // 🔒 escopo por usuário logado
             ->where('sales.created_at', '>=', $startDate);
 
         $salesByGroup = $this->scopeNaoCancelada($query)
@@ -142,6 +186,7 @@ class DashboardController extends Controller
      */
     public function dailySales(Request $request): JsonResponse
     {
+        $userId = $this->userId();
         $days = (int) $request->get('days', 15);
         $startDate = Carbon::now(self::TZ)->subDays($days)->startOfDay()->utc();
 
@@ -154,6 +199,7 @@ class DashboardController extends Controller
                 DB::raw('CAST(SUM(total) AS DECIMAL(10,2)) as total'),
                 DB::raw('COUNT(*) as count')
             )
+            ->where('user_id', $userId) // 🔒 escopo por usuário logado
             ->where('created_at', '>=', $startDate);
 
         $vendas = $this->scopeNaoCancelada($query)
@@ -169,14 +215,18 @@ class DashboardController extends Controller
      */
     public function productsWithoutSales(Request $request): JsonResponse
     {
+        $userId = $this->userId();
         $days = (int) $request->get('days', 30);
         $startDate = Carbon::now(self::TZ)->subDays($days)->utc();
 
-        $soldProductIds = SaleItem::whereHas('sale', function ($q) use ($startDate) {
-            $this->scopeNaoCancelada($q)->where('created_at', '>=', $startDate);
+        $soldProductIds = SaleItem::whereHas('sale', function ($q) use ($startDate, $userId) {
+            $this->scopeNaoCancelada($q)
+                ->where('user_id', $userId) // 🔒 escopo por usuário logado
+                ->where('created_at', '>=', $startDate);
         })->pluck('product_id')->filter()->unique();
 
-        $products = Product::where('active', true)
+        $products = Product::where('user_id', $userId) // 🔒 escopo por usuário logado
+            ->where('active', true)
             ->whereNotIn('id', $soldProductIds)
             ->select('id', 'name', 'stock_quantity', 'sku')
             ->get();
@@ -194,9 +244,11 @@ class DashboardController extends Controller
      */
     public function lowStock(Request $request): JsonResponse
     {
+        $userId = $this->userId();
         $limit = (int) $request->get('limit', 50);
 
-        $produtos = Product::where('active', true)
+        $produtos = Product::where('user_id', $userId) // 🔒 escopo por usuário logado
+            ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->with('group:id,name')
             ->orderBy('stock_quantity', 'asc') // 🔴 ordem crescente (menor estoque primeiro)

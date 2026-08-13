@@ -22,6 +22,7 @@ class PurchaseController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Purchase::with(['supplier', 'user'])
+            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
             ->withCount('items')
             ->latest();
 
@@ -85,7 +86,9 @@ class PurchaseController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $purchase = Purchase::with(['items.product', 'supplier', 'user'])->findOrFail($id);
+        $purchase = Purchase::with(['items.product', 'supplier', 'user'])
+            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+            ->findOrFail($id);
 
         return response()->json($purchase);
     }
@@ -97,7 +100,8 @@ class PurchaseController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $purchase = Purchase::findOrFail($id);
+            $purchase = Purchase::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+                ->findOrFail($id);
 
             if ($request->has('items')) {
                 $validated = $request->validate([
@@ -148,7 +152,8 @@ class PurchaseController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
-            $purchase = Purchase::findOrFail($id);
+            $purchase = Purchase::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+                ->findOrFail($id);
             $purchase->delete();
 
             return response()->json([

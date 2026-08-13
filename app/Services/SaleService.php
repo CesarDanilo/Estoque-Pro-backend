@@ -198,17 +198,24 @@ class SaleService
     }
 
     /**
-     * Gera o código identificador da venda (Ex: V-1001, V-1002...)
+     * Gera o próximo código sequencial de venda (ex: V-1001, V-1002...).
+     *
+     * Nota: o lock é aplicado sobre a linha concreta (ORDER BY ... LIMIT 1),
+     * e não sobre um resultado agregado (MAX/SUM), pois o PostgreSQL não
+     * permite "FOR UPDATE" combinado com funções de agregação.
      */
     private function generateSaleCode(): string
     {
-        $lastSale = Sale::withTrashed()->latest('created_at')->first();
-        $nextNumber = 1001;
+        $prefix = 'V-';
 
-        if ($lastSale && preg_match('/V-(\d+)/', $lastSale->code, $matches)) {
-            $nextNumber = ((int) $matches[1]) + 1;
-        }
+        $lastCode = DB::table('sales')
+            ->where('code', 'like', $prefix . '%')
+            ->orderByRaw("CAST(SUBSTRING(code FROM 3) AS INTEGER) DESC")
+            ->lockForUpdate()
+            ->value('code');
 
-        return 'V-' . $nextNumber;
+        $nextNumber = $lastCode ? ((int) substr($lastCode, strlen($prefix))) + 1 : 1001;
+
+        return $prefix . $nextNumber;
     }
 }

@@ -22,6 +22,7 @@ class SaleController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Sale::with(['customer', 'user'])
+            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
             // withCount('items') adiciona o atributo "items_count" em cada
             // venda do resultado, sem carregar a relação inteira (SaleItem)
             // — é só um COUNT(*) via subquery, bem mais leve que with('items').
@@ -89,7 +90,9 @@ class SaleController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $sale = Sale::with(['items.product', 'customer', 'user'])->findOrFail($id);
+        $sale = Sale::with(['items.product', 'customer', 'user'])
+            ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+            ->findOrFail($id);
 
         return response()->json($sale);
     }
@@ -114,7 +117,8 @@ class SaleController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $sale = Sale::findOrFail($id);
+            $sale = Sale::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+                ->findOrFail($id);
 
             // Cenário 1: edição completa (traz itens) — usa o SaleService
             if ($request->has('items')) {
@@ -170,7 +174,8 @@ class SaleController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
-            $sale = Sale::findOrFail($id);
+            $sale = Sale::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
+                ->findOrFail($id);
             $sale->delete();
 
             return response()->json([

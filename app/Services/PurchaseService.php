@@ -178,17 +178,24 @@ class PurchaseService
     }
 
     /**
-     * Gera o código identificador da compra (Ex: C-1001, C-1002...)
+     * Gera o próximo código sequencial de compra (ex: C-1001, C-1002...).
+     *
+     * Nota: o lock é aplicado sobre a linha concreta (ORDER BY ... LIMIT 1),
+     * e não sobre um resultado agregado (MAX/SUM), pois o PostgreSQL não
+     * permite "FOR UPDATE" combinado com funções de agregação.
      */
     private function generatePurchaseCode(): string
     {
-        $lastPurchase = Purchase::withTrashed()->latest('created_at')->first();
-        $nextNumber = 1001;
+        $prefix = 'C-';
 
-        if ($lastPurchase && preg_match('/C-(\d+)/', $lastPurchase->code, $matches)) {
-            $nextNumber = ((int) $matches[1]) + 1;
-        }
+        $lastCode = DB::table('purchases')
+            ->where('code', 'like', $prefix . '%')
+            ->orderByRaw("CAST(SUBSTRING(code FROM 3) AS INTEGER) DESC")
+            ->lockForUpdate()
+            ->value('code');
 
-        return 'C-' . $nextNumber;
+        $nextNumber = $lastCode ? ((int) substr($lastCode, strlen($prefix))) + 1 : 1001;
+
+        return $prefix . $nextNumber;
     }
 }
