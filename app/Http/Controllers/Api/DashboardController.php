@@ -264,4 +264,58 @@ class DashboardController extends Controller
 
         return response()->json($produtos);
     }
+    /**
+     * Retorna as últimas movimentações recentes (Vendas + Compras) mescladas por data.
+     */
+    public function recentActivities(Request $request): JsonResponse
+    {
+        $userId = $this->userId();
+        $limit = (int) $request->get('limit', 10);
+
+        // Busca Vendas recentes
+        $vendasQuery = Sale::where('user_id', $userId)->with('customer:id,name');
+        $vendas = $this->scopeNaoCancelada($vendasQuery)
+            ->latest()
+            ->limit($limit)
+            ->get();
+
+        // Busca Compras recentes
+        $comprasQuery = Purchase::where('user_id', $userId)->with('supplier:id,name');
+        $compras = $this->scopeNaoCancelada($comprasQuery)
+            ->latest()
+            ->limit($limit)
+            ->get();
+
+        // Formata as Vendas (Saídas)
+        $atividadesVendas = $vendas->map(function ($v) {
+            return [
+                'id' => $v->id,
+                'tipo' => 'saida',
+                'titulo' => 'Venda ' . ($v->code ?? substr((string)$v->id, 0, 8)) . ' · ' . ($v->customer->name ?? 'Cliente Avulso'),
+                'data' => $v->created_at,
+                'valor' => (float) ($v->total ?? 0),
+                'raw' => $v,
+            ];
+        });
+
+        // Formata as Compras (Entradas)
+        $atividadesCompras = $compras->map(function ($c) {
+            return [
+                'id' => $c->id,
+                'tipo' => 'entrada',
+                'titulo' => 'Compra ' . ($c->code ?? substr((string)$c->id, 0, 8)) . ' · ' . ($c->supplier->name ?? 'Fornecedor Avulso'),
+                'data' => $c->created_at,
+                'valor' => (float) ($c->total ?? 0),
+                'raw' => $c,
+            ];
+        });
+
+        // Junta, ordena pela data mais recente e limita o número de resultados
+        $atividades = $atividadesVendas->concat($atividadesCompras)
+            ->sortByDesc('data')
+            ->values()
+            ->take($limit);
+
+        return response()->json($atividades);
+    }
 }
