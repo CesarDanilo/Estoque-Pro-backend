@@ -26,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/sales-by-group', [DashboardController::class, 'salesByGroup']);
         Route::get('/daily-sales', [DashboardController::class, 'dailySales']);
         Route::get('/without-sales', [DashboardController::class, 'productsWithoutSales']);
+        Route::get('/low-stock', [DashboardController::class, 'lowStock']);
     });
     
     // Rotas para gerenciamento de pessoas

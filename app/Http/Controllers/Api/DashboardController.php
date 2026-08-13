@@ -183,4 +183,33 @@ class DashboardController extends Controller
 
         return response()->json($products);
     }
+
+    /**
+     * Retorna os produtos com risco de desabastecimento
+     * (estoque atual <= estoque mínimo), ordenados do MENOR
+     * para o MAIOR estoque restante — quem está mais crítico
+     * (inclusive "Sem estoque" = 0) aparece primeiro.
+     *
+     * Usado pelo card "Precisa da sua atenção" no dashboard.
+     */
+    public function lowStock(Request $request): JsonResponse
+    {
+        $limit = (int) $request->get('limit', 50);
+
+        $produtos = Product::where('active', true)
+            ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
+            ->with('group:id,name')
+            ->orderBy('stock_quantity', 'asc') // 🔴 ordem crescente (menor estoque primeiro)
+            ->limit($limit)
+            ->get([
+                'id',
+                'name',
+                'sku',
+                'group_id',
+                'stock_quantity',
+                'min_stock_quantity',
+            ]);
+
+        return response()->json($produtos);
+    }
 }
