@@ -8,11 +8,18 @@ use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\CpfValidationController;
+use App\Http\Controllers\Api\CnpjValidationController;
+use App\Http\Controllers\Api\EmailValidationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::post('/document/cpf/validate', CpfValidationController::class);
+Route::post('/document/cnpj/validate', CnpjValidationController::class);
+Route::post('/email/validate', EmailValidationController::class);
 
 // Rotas protegidas por autenticação
 Route::middleware('auth:sanctum')->group(function () {

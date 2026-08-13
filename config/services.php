@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    'abstract' => [
+        'email_validation_key' => env('ABSTRACT_EMAIL_API_KEY'),
+        'email_validation_url' => env('ABSTRACT_EMAIL_API_URL', 'https://emailreputation.abstractapi.com/v1/'),
+    ],
+
+    'cpfhub' => [
+        'api_key' => env('CPFHUB_API_KEY'),
+        'api_url' => env('CPFHUB_API_URL', 'https://api.cpfhub.io/cpf'),
+    ],
+
+    'brasilapi' => [
+        'cnpj_url' => env('BRASILAPI_CNPJ_URL', 'https://brasilapi.com.br/api/cnpj/v1'),
+    ],
+        
+
 ];
