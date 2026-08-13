@@ -21,18 +21,18 @@ class ProductController extends Controller
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%");
+                $q->where('name', 'ilike', "%{$search}%")
+                  ->orWhere('sku', 'ilike', "%{$search}%");
             });
         }
 
         // Filtro por Grupo
-        if ($request->filled('group_id')) {
+        if ($request->filled('group_id') && $request->input('group_id') !== 'todos') {
             $query->where('group_id', $request->input('group_id'));
         }
 
         // Filtro por Status (Ativo / Inativo)
-        if ($request->has('active') && $request->input('active') !== null) {
+        if ($request->has('active') && $request->input('active') !== null && $request->input('active') !== 'todos') {
             $query->where('active', filter_var($request->input('active'), FILTER_VALIDATE_BOOLEAN));
         }
 
