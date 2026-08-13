@@ -23,10 +23,6 @@ class SaleController extends Controller
     {
         $query = Sale::with(['customer', 'user'])
             ->where('user_id', auth()->id()) // 🔒 escopo por usuário logado
-            // withCount('items') adiciona o atributo "items_count" em cada
-            // venda do resultado, sem carregar a relação inteira (SaleItem)
-            // — é só um COUNT(*) via subquery, bem mais leve que with('items').
-            // É esse campo que a coluna "Itens" da tela de Vendas (Vue) lê.
             ->withCount('items')
             ->latest();
 
@@ -74,6 +70,9 @@ class SaleController extends Controller
             $userId = auth()->id();
             $sale = $this->saleService->createSale($request->validated(), $userId);
 
+            // Carrega os relacionamentos para retornar o registro atualizado ao Vue
+            $sale->load(['items.product', 'customer']);
+
             return response()->json([
                 'message' => 'Venda realizada com sucesso!',
                 'data'    => $sale,
@@ -99,20 +98,6 @@ class SaleController extends Controller
 
     /**
      * Atualiza uma venda.
-     *
-     * Esta rota é usada em dois cenários diferentes pelo front-end:
-     *
-     * 1) Edição completa da venda (modal "Editar venda" em NewSale.vue) —
-     *    o payload sempre traz `items`. Nesse caso delegamos para
-     *    SaleService::updateSale(), que devolve o estoque dos itens antigos,
-     *    valida/baixa o estoque dos itens novos e recalcula subtotal/total
-     *    corretamente. Era exatamente esse fluxo que estava quebrado: antes
-     *    o controller ignorava `items` por completo e só atualizava
-     *    status/payment_method/total, então nada era realmente salvo.
-     *
-     * 2) Alteração rápida de status (menu "Alterar situação" em
-     *    SaleView.vue) — o payload traz só `{ status: '...' }`, sem itens.
-     *    Nesse caso fazemos um update parcial simples, sem mexer em estoque.
      */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -145,7 +130,7 @@ class SaleController extends Controller
 
                 return response()->json([
                     'message' => 'Venda atualizada com sucesso!',
-                    'data'    => $sale,
+                    'data'    => $sale->load(['items.product', 'customer']),
                 ]);
             }
 
@@ -159,7 +144,7 @@ class SaleController extends Controller
 
             return response()->json([
                 'message' => 'Venda atualizada com sucesso!',
-                'data'    => $sale->fresh(),
+                'data'    => $sale->fresh(['items.product', 'customer']),
             ]);
         } catch (Exception $e) {
             return response()->json([
@@ -176,7 +161,13 @@ class SaleController extends Controller
         try {
             $sale = Sale::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
                 ->findOrFail($id);
-            $sale->delete();
+
+            // Deleta através do Service se ele possuir regras de estorno de estoque
+            if (method_exists($this->saleService, 'deleteSale')) {
+                $this->saleService->deleteSale($sale);
+            } else {
+                $sale->delete();
+            }
 
             return response()->json([
                 'message' => 'Venda excluída com sucesso!',
