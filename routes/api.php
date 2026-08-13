@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\DashboardController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -19,6 +20,14 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/summary', [DashboardController::class, 'summary']);
+        Route::get('/top-products', [DashboardController::class, 'topProducts']);
+        Route::get('/sales-by-group', [DashboardController::class, 'salesByGroup']);
+        Route::get('/daily-sales', [DashboardController::class, 'dailySales']);
+        Route::get('/without-sales', [DashboardController::class, 'productsWithoutSales']);
+    });
+    
     // Rotas para gerenciamento de pessoas
     Route::apiResource('person', PersonController::class);
     Route::apiResource('groups', GroupController::class);
