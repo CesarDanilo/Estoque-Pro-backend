@@ -16,27 +16,25 @@ class GroupController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $groups = Group::query()
-            ->where('user_id', $request->user()->id)
-            ->withCount([
-                'products as produtos',
-            ])
-            ->when($request->query('search'), function ($query, $search) {
-                $driver = DB::connection()->getDriverName();
-                $likeOperator = $driver === 'pgsql' ? 'ilike' : 'like';
+        $userId = $request->user()->id;
 
-                $query->where('name', $likeOperator, "%{$search}%");
-            })
-            ->latest()
-            ->paginate(15);
+        $query = Group::query()
+            ->where('user_id', $userId)
+            ->withCount(['products as produtos'])
+            ->when($request->query('search'), function ($q, $search) {
+                $q->where('name', 'ilike', "%{$search}%");
+            });
 
-        // Define subgrupos como 0 para manter o padrão esperado pelo front-end
-        $groups->getCollection()->transform(function ($group) {
-            $group->subgrupos = 0;
-            return $group;
-        });
+        $groups = $query->latest()->paginate(15);
 
-        return response()->json($groups);
+        // Calcula o total real de ativos do usuário no banco
+        $totalAtivos = Group::where('user_id', $userId)->where('active', true)->count();
+
+        // Adiciona o total_ativos ao retorno JSON
+        $data = $groups->toArray();
+        $data['total_ativos'] = $totalAtivos;
+
+        return response()->json($data);
     }
 
     /**
