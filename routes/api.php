@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ReportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -28,6 +29,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/without-sales', [DashboardController::class, 'productsWithoutSales']);
         Route::get('/low-stock', [DashboardController::class, 'lowStock']);
         Route::get('/recent-activities', [DashboardController::class, 'recentActivities']);
+    });
+
+    Route::prefix('reports')->group(function () {
+        Route::get('/sales', [ReportController::class, 'sales']);
+        Route::get('/purchases', [ReportController::class, 'purchases']);
+        Route::get('/products', [ReportController::class, 'products']);
+        Route::get('/people', [ReportController::class, 'people']);
     });
     
     // Rotas para gerenciamento de pessoas
