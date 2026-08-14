@@ -36,7 +36,6 @@ class PurchaseService
                     'id'           => Str::uuid()->toString(),
                     'product_id'   => $product->id,
                     'product_name' => $product->name,
-                    'product_sku'  => $product->sku,
                     'quantity'     => $quantity,
                     'unit_cost'    => $unitCost,
                     'total_cost'   => $totalCost,

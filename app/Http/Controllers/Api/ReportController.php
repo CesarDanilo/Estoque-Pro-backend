@@ -215,31 +215,16 @@ class ReportController extends Controller
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->count();
 
-        $supplierJoinCol = Schema::hasColumn('purchases', 'supplier_id') ? 'purchases.supplier_id' : null;
-        $personJoinCol = Schema::hasColumn('purchases', 'person_id') ? 'purchases.person_id' : null;
-
-        $comprasPorFornecedorQuery = DB::table('purchases')
+        // Fornecedor vive em people (purchases.supplier_id -> people.id)
+        $comprasPorFornecedor = DB::table('purchases')
+            ->leftJoin('people', 'people.id', '=', 'purchases.supplier_id')
             ->where('purchases.user_id', $userId)
-            ->whereBetween("purchases.{$dateCol}", [$startDate, $endDate]);
-
-        if ($supplierJoinCol) {
-            $comprasPorFornecedorQuery->leftJoin('suppliers', 'suppliers.id', '=', 'purchases.supplier_id');
-        }
-        if ($personJoinCol) {
-            $comprasPorFornecedorQuery->leftJoin('people', 'people.id', '=', 'purchases.person_id');
-        }
-
-        $fornecedorNameExpr = "COALESCE(" .
-            ($supplierJoinCol ? "suppliers.name, " : "") .
-            ($personJoinCol ? "people.name, " : "") .
-            "'Não informado')";
-
-        $comprasPorFornecedor = $comprasPorFornecedorQuery
+            ->whereBetween("purchases.{$dateCol}", [$startDate, $endDate])
             ->select(
-                DB::raw("{$fornecedorNameExpr} as fornecedor"),
+                DB::raw("COALESCE(people.name, 'Não informado') as fornecedor"),
                 DB::raw("SUM(purchases.{$totalCol}) as total")
             )
-            ->groupBy(DB::raw($fornecedorNameExpr))
+            ->groupBy(DB::raw("COALESCE(people.name, 'Não informado')"))
             ->orderByDesc('total')
             ->get();
 
@@ -338,25 +323,21 @@ class ReportController extends Controller
     {
         $userId = $request->user()->id;
 
-        $clientesQtd = Person::where('user_id', $userId)->where('type', 'client')->count();
-        $fornecedoresQtd = Person::where('user_id', $userId)->where('type', 'supplier')->count();
-        $colaboradoresQtd = Person::where('user_id', $userId)->where('type', 'employee')->count();
-
-        if ($fornecedoresQtd === 0) {
-            $fornecedoresQtd = Supplier::where('user_id', $userId)->count();
-        }
+        // 🔴 AQUI: removido "employee" — só existem client e supplier agora
+        $clientesQtd = Person::where('user_id', $userId)->where('category', 'client')->count();
+        $fornecedoresQtd = Person::where('user_id', $userId)->where('category', 'supplier')->count();
 
         $pessoasPorGrupo = [
             ['grupo' => 'Cliente', 'quantidade' => $clientesQtd],
             ['grupo' => 'Fornecedor', 'quantidade' => $fornecedoresQtd],
-            ['grupo' => 'Colaborador', 'quantidade' => $colaboradoresQtd],
         ];
 
-        $generoFeminino = Person::where('user_id', $userId)->where('gender', 'F')->count();
-        $generoMasculino = Person::where('user_id', $userId)->where('gender', 'M')->count();
+        // 🔴 AQUI: corrigido 'M'/'F' para 'male'/'female', que é o enum real da coluna gender
+        $generoFeminino = Person::where('user_id', $userId)->where('gender', 'female')->count();
+        $generoMasculino = Person::where('user_id', $userId)->where('gender', 'male')->count();
         $generoNaoInformado = Person::where('user_id', $userId)
             ->where(function ($q) {
-                $q->whereNull('gender')->orWhereNotIn('gender', ['M', 'F']);
+                $q->whereNull('gender')->orWhereNotIn('gender', ['male', 'female']);
             })->count();
 
         $driver = DB::getDriverName();

@@ -14,11 +14,10 @@ return new class extends Migration
             // Relacionamentos ajustados para UUID
             $table->foreignUuid('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignUuid('group_id')->constrained('groups')->cascadeOnDelete();
-            $table->foreignUuid('supplier_id')->nullable()->constrained('suppliers')->nullOnDelete();
+            $table->foreignUuid('supplier_id')->nullable()->constrained('people')->nullOnDelete();
 
             // Dados do Produto
             $table->string('name', 120);
-            $table->string('sku', 30);
 
             // Preços e Estoque
             $table->decimal('cost_price', 10, 2)->default(0.00);
@@ -32,8 +31,7 @@ return new class extends Migration
 
             $table->timestamps();
 
-            // Garantia de SKU único por usuário
-            $table->unique(['user_id', 'sku']);
+            // 🔴 AQUI: removida constraint unique(['user_id', 'sku']) — SKU não é mais usado
         });
     }
 

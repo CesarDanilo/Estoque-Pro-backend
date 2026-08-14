@@ -112,6 +112,7 @@ class DashboardController extends Controller
         ]);
     }
 
+
     /**
      * Retorna os produtos mais vendidos nos últimos X dias
      */
@@ -131,7 +132,7 @@ class DashboardController extends Controller
                 DB::raw("CAST(SUM({$itemTotalExpr}) AS DECIMAL(10,2)) as total_amount")
             )
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-            ->where('sales.user_id', $userId) // 🔒 Escopo por usuário
+            ->where('sales.user_id', $userId)
             ->where('sales.created_at', '>=', $startDate)
             ->whereNotNull('sale_items.product_id');
 
@@ -139,7 +140,7 @@ class DashboardController extends Controller
             ->groupBy('sale_items.product_id')
             ->orderByRaw('SUM(sale_items.quantity) DESC')
             ->limit($limit)
-            ->with(['product:id,name,sku,sale_price,group_id', 'product.group:id,name'])
+            ->with(['product:id,name,sale_price,group_id', 'product.group:id,name']) // 🔴 AQUI: removido sku
             ->get();
 
         return response()->json($topProducts);
@@ -210,7 +211,7 @@ class DashboardController extends Controller
         return response()->json($vendas);
     }
 
-    /**
+     /**
      * Retorna a lista de produtos ativos que NÃO tiveram vendas no período.
      */
     public function productsWithoutSales(Request $request): JsonResponse
@@ -221,20 +222,20 @@ class DashboardController extends Controller
 
         $soldProductIds = SaleItem::whereHas('sale', function ($q) use ($startDate, $userId) {
             $this->scopeNaoCancelada($q)
-                ->where('user_id', $userId) // 🔒 Escopo por usuário na subquery
+                ->where('user_id', $userId)
                 ->where('created_at', '>=', $startDate);
         })->pluck('product_id')->filter()->unique();
 
-        $products = Product::where('user_id', $userId) // 🔒 Escopo por usuário
+        $products = Product::where('user_id', $userId)
             ->where('active', true)
             ->whereNotIn('id', $soldProductIds)
-            ->select('id', 'name', 'stock_quantity', 'sku')
+            ->select('id', 'name', 'stock_quantity') // 🔴 AQUI: removido sku
             ->get();
 
         return response()->json($products);
     }
 
-    /**
+     /**
      * Retorna os produtos com risco de desabastecimento.
      */
     public function lowStock(Request $request): JsonResponse
@@ -242,7 +243,7 @@ class DashboardController extends Controller
         $userId = $this->userId();
         $limit = (int) $request->get('limit', 50);
 
-        $produtos = Product::where('user_id', $userId) // 🔒 Escopo por usuário
+        $produtos = Product::where('user_id', $userId)
             ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->with('group:id,name')
@@ -251,11 +252,10 @@ class DashboardController extends Controller
             ->get([
                 'id',
                 'name',
-                'sku',
                 'group_id',
                 'stock_quantity',
                 'min_stock_quantity',
-            ]);
+            ]); // 🔴 AQUI: removido sku
 
         return response()->json($produtos);
     }

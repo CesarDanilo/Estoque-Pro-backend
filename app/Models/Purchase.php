@@ -36,25 +36,16 @@ class Purchase extends Model
         'total' => 'decimal:2',
     ];
 
-    /**
-     * Itens da compra
-     */
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseItem::class);
     }
 
-    /**
-     * Fornecedor vinculado à compra
-     */
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Person::class, 'supplier_id');
     }
 
-    /**
-     * Usuário responsável pelo lançamento da compra
-     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -13,17 +13,13 @@ class ProductController extends Controller
     // GET /api/products
     public function index(Request $request): JsonResponse
     {
-        // Filtra estritamente pelos produtos do usuário logado
         $query = Product::where('user_id', $request->user()->id)
             ->with(['group', 'supplier']);
 
-        // Busca rápida por nome ou SKU
+        // 🔴 AQUI: busca agora só por nome — SKU não existe mais
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'ilike', "%{$search}%")
-                  ->orWhere('sku', 'ilike', "%{$search}%");
-            });
+            $query->where('name', 'ilike', "%{$search}%");
         }
 
         // Filtro por Grupo
@@ -44,7 +40,6 @@ class ProductController extends Controller
     // POST /api/products
     public function store(ProductRequest $request): JsonResponse
     {
-        // Mescla os dados validados anexando o ID do usuário logado
         $data = array_merge($request->validated(), [
             'user_id' => $request->user()->id,
         ]);
@@ -60,7 +55,6 @@ class ProductController extends Controller
     // GET /api/products/{product}
     public function show(Request $request, Product $product): JsonResponse
     {
-        // Valida se o produto pertence ao usuário logado
         $this->authorizeProductOwnership($request, $product);
 
         return response()->json($product->load(['group', 'supplier']));
@@ -69,7 +63,6 @@ class ProductController extends Controller
     // PUT /api/products/{product}
     public function update(ProductRequest $request, Product $product): JsonResponse
     {
-        // Valida se o produto pertence ao usuário logado
         $this->authorizeProductOwnership($request, $product);
 
         $product->update($request->validated());
@@ -83,7 +76,6 @@ class ProductController extends Controller
     // DELETE /api/products/{product}
     public function destroy(Request $request, Product $product): JsonResponse
     {
-        // Valida se o produto pertence ao usuário logado
         $this->authorizeProductOwnership($request, $product);
 
         $product->delete();
@@ -93,9 +85,6 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Garante que o recurso acessado pertence ao usuário logado.
-     */
     private function authorizeProductOwnership(Request $request, Product $product): void
     {
         if ($product->user_id !== $request->user()->id) {

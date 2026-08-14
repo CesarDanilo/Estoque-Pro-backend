@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Person;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PersonController extends Controller
 {
     /**
-     * Listar pessoas (com busca e paginação).
+     * Listar pessoas (com busca, filtro por categoria/tipo e paginação).
      */
     public function index(Request $request)
     {
@@ -20,11 +21,18 @@ class PersonController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
+                ->orWhere('trade_name', 'like', "%{$search}%")
                 ->orWhere('document', 'like', "%{$search}%")
                 ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
+        // Categoria: client ou supplier
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
+        // Tipo de documento: individual ou company
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
@@ -71,7 +79,6 @@ class PersonController extends Controller
     {
         abort_if($person->user_id !== $request->user()->id, 403, 'Acesso não autorizado.');
 
-        // isUpdate = true -> valida só os campos que vierem no payload (PATCH parcial)
         $validator = $this->validatePerson($request, $person->id, isUpdate: true);
 
         if ($validator->fails()) {
@@ -106,30 +113,61 @@ class PersonController extends Controller
      * No store, os campos obrigatórios usam 'required' (payload completo).
      * No update, usam 'sometimes|required' — só são validados (e exigidos)
      * se vierem no payload, permitindo updates parciais (ex: apenas 'active').
+     *
+     * phone e email não são obrigatórios — pessoa física muitas vezes não
+     * tem os dois preenchidos no momento do cadastro. Campos que só fazem
+     * sentido para pessoa jurídica (state_registration, contact_person) ou
+     * que dependem de endereço completo continuam opcionais.
      */
     private function validatePerson(Request $request, ?string $ignoreId = null, bool $isUpdate = false)
     {
-        // 'sometimes' primeiro: se o campo não vier no request, a regra inteira é ignorada.
-        // 'required' depois: se o campo vier, ele não pode vir vazio/nulo.
         $requiredRule = $isUpdate ? ['sometimes', 'required'] : ['required'];
+        $userId = $request->user()->id;
 
-        return Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
+            'category' => [...$requiredRule, 'in:client,supplier'],
             'type' => [...$requiredRule, 'in:individual,company'],
             'name' => [...$requiredRule, 'string', 'max:255'],
+            'trade_name' => ['nullable', 'string', 'max:255'],
             'document' => [
                 ...$requiredRule,
                 'string',
                 'max:20',
-                'unique:people,document' . ($ignoreId ? ",{$ignoreId}" : ''),
+                // 🔴 AQUI: unicidade escopada por usuário, mesmo padrão de groups/products
+                Rule::unique('people', 'document')
+                    ->where(fn ($query) => $query->where('user_id', $userId))
+                    ->ignore($ignoreId),
             ],
+            'state_registration' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'birth_date' => ['nullable', 'date'],
-            'phone' => [...$requiredRule, 'string', 'max:20'],
-            'email' => [...$requiredRule, 'email', 'max:255'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
             'zip_code' => ['nullable', 'string', 'max:10'],
+            'street' => ['nullable', 'string', 'max:255'],
+            'number' => ['nullable', 'string', 'max:20'],
+            'complement' => ['nullable', 'string', 'max:255'],
+            'neighborhood' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:2'],
             'address' => ['nullable', 'string', 'max:255'],
             'active' => ['sometimes', 'boolean'],
+            'notes' => ['nullable', 'string'],
+        ], [
+            'document.unique' => 'Você já possui uma pessoa cadastrada com este documento.',
         ]);
+
+        // Regra de negócio: fornecedor só pode ser pessoa jurídica
+        $validator->after(function ($validator) use ($request) {
+            $category = $request->input('category');
+            $type = $request->input('type');
+
+            if ($category === 'supplier' && $type && $type !== 'company') {
+                $validator->errors()->add('type', 'Fornecedor deve ser cadastrado como pessoa jurídica.');
+            }
+        });
+
+        return $validator;
     }
 }

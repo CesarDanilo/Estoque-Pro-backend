@@ -42,14 +42,13 @@ class SaleService
                     'id'               => Str::uuid()->toString(),
                     'product_id'       => $product->id,
                     'product_name'     => $product->name,
-                    'product_sku'      => $product->sku,
+                    // 🔴 AQUI: removido 'product_sku' — coluna permanece no banco (nullable) por histórico, mas não é mais preenchida
                     'quantity'         => $quantity,
                     'unit_cost_price'  => $product->cost_price ?? 0.00,
                     'unit_price'       => $unitPrice,
                     'total_price'      => $totalPrice,
                 ];
 
-                // Baixa automática no estoque do produto
                 $product->decrement('stock_quantity', $quantity);
             }
 

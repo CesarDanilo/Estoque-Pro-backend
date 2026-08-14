@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Supplier;
+use App\Models\Person;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -11,7 +11,8 @@ class SupplierController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('user_id', $request->user()->id);
+        $query = Person::where('user_id', $request->user()->id)
+            ->where('category', 'supplier');
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -33,7 +34,7 @@ class SupplierController extends Controller
         $validated = $request->validate([
             'name'               => 'required|string|max:255',
             'trade_name'         => 'nullable|string|max:255',
-            'document'           => 'nullable|string|max:20',
+            'document'           => 'required|string|max:20|unique:people,document',
             'state_registration' => 'nullable|string|max:20',
             'email'              => 'nullable|email|max:255',
             'phone'              => 'nullable|string|max:20',
@@ -50,34 +51,36 @@ class SupplierController extends Controller
         ]);
 
         $validated['user_id'] = $request->user()->id;
+        $validated['category'] = 'supplier';
+        $validated['type'] = 'company'; // Fornecedor é sempre pessoa jurídica
 
-        $supplier = Supplier::create($validated);
+        $supplier = Person::create($validated);
 
         return response()->json([
             'message' => 'Fornecedor cadastrado com sucesso.',
             'data'    => $supplier,
-        ], 201); // Ajustado de 210 para 201 Created
+        ], 201);
     }
 
-    public function show(Request $request, Supplier $supplier): JsonResponse
+    public function show(Request $request, Person $supplier): JsonResponse
     {
-        if ($supplier->user_id !== $request->user()->id) {
+        if ($supplier->user_id !== $request->user()->id || $supplier->category !== 'supplier') {
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 
         return response()->json($supplier);
     }
 
-    public function update(Request $request, Supplier $supplier): JsonResponse
+    public function update(Request $request, Person $supplier): JsonResponse
     {
-        if ($supplier->user_id !== $request->user()->id) {
+        if ($supplier->user_id !== $request->user()->id || $supplier->category !== 'supplier') {
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 
         $validated = $request->validate([
             'name'               => 'sometimes|required|string|max:255',
             'trade_name'         => 'nullable|string|max:255',
-            'document'           => 'nullable|string|max:20',
+            'document'           => 'sometimes|required|string|max:20|unique:people,document,' . $supplier->id,
             'state_registration' => 'nullable|string|max:20',
             'email'              => 'nullable|email|max:255',
             'phone'              => 'nullable|string|max:20',
@@ -93,6 +96,10 @@ class SupplierController extends Controller
             'notes'              => 'nullable|string',
         ]);
 
+        // Garante que a categoria/tipo nunca sejam alterados por aqui
+        $validated['category'] = 'supplier';
+        $validated['type'] = 'company';
+
         $supplier->update($validated);
 
         return response()->json([
@@ -101,9 +108,9 @@ class SupplierController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, Supplier $supplier): JsonResponse
+    public function destroy(Request $request, Person $supplier): JsonResponse
     {
-        if ($supplier->user_id !== $request->user()->id) {
+        if ($supplier->user_id !== $request->user()->id || $supplier->category !== 'supplier') {
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 

@@ -14,29 +14,20 @@ class ProductRequest extends FormRequest
 
     public function rules(): array
     {
-        $productId = $this->route('product') ? $this->route('product')->id : null;
         $userId = $this->user()->id;
 
         return [
             'name' => ['required', 'string', 'max:120'],
-            'sku' => [
-                'required',
-                'string',
-                'max:30',
-                // Garante que o SKU seja único apenas entre os produtos deste usuário
-                Rule::unique('products', 'sku')
-                    ->where('user_id', $userId)
-                    ->ignore($productId)
-            ],
-            // Garante que o grupo informado também pertença ao usuário logado
+            // 🔴 AQUI: removida validação de 'sku' — campo não é mais usado
             'group_id' => [
                 'required',
                 Rule::exists('groups', 'id')->where('user_id', $userId)
             ],
-            // Garante que o fornecedor (se informado) pertença ao usuário logado
             'supplier_id' => [
                 'nullable',
-                Rule::exists('suppliers', 'id')->where('user_id', $userId)
+                Rule::exists('people', 'id')
+                    ->where('user_id', $userId)
+                    ->where('category', 'supplier'),
             ],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
             'sale_price' => ['required', 'numeric', 'min:0'],

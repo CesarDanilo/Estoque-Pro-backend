@@ -13,7 +13,6 @@ class Product extends Model
     protected $fillable = [
         'user_id',
         'name',
-        'sku',
         'group_id',
         'supplier_id',
         'cost_price',
@@ -22,7 +21,7 @@ class Product extends Model
         'min_stock_quantity',
         'description',
         'active',
-    ];
+    ]; // 🔴 AQUI: removido 'sku'
 
     protected $casts = [
         'cost_price' => 'decimal:2',
@@ -32,7 +31,6 @@ class Product extends Model
         'active' => 'boolean',
     ];
 
-    // Relacionamento com Usuário
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -45,6 +43,6 @@ class Product extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Person::class, 'supplier_id');
     }
 }

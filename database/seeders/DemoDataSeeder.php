@@ -7,7 +7,6 @@ use App\Models\Person;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -80,8 +79,8 @@ class DemoDataSeeder extends Seeder
         return $grupos;
     }
 
-    // =========================================================================
-    // FORNECEDORES (25)
+// =========================================================================
+    // FORNECEDORES (25) — agora vivem em people, com category = supplier
     // =========================================================================
     private function criarFornecedores(User $user): array
     {
@@ -93,8 +92,10 @@ class DemoDataSeeder extends Seeder
             $documento = $this->gerarCnpj();
             $ativo = $faker->boolean(85); // 85% ativos
 
-            $fornecedores[] = Supplier::create([
+            $fornecedores[] = Person::create([
                 'user_id' => $user->id,
+                'category' => 'supplier',
+                'type' => 'company', // fornecedor é sempre pessoa jurídica
                 'name' => $faker->unique()->company(),
                 'trade_name' => $faker->boolean(60) ? $faker->companySuffix() . ' ' . $faker->word() : null,
                 'document' => $documento,
@@ -118,7 +119,7 @@ class DemoDataSeeder extends Seeder
     }
 
     // =========================================================================
-    // PESSOAS (50 — clientes físicos e jurídicos)
+    // PESSOAS (50 — clientes físicos e jurídicos, category = client)
     // =========================================================================
     private function criarPessoas(User $user): array
     {
@@ -131,6 +132,7 @@ class DemoDataSeeder extends Seeder
             if ($ehJuridica) {
                 $pessoas[] = Person::create([
                     'user_id' => $user->id,
+                    'category' => 'client',
                     'type' => 'company',
                     'name' => $faker->unique()->company(),
                     'document' => $this->gerarCnpj(),
@@ -150,6 +152,7 @@ class DemoDataSeeder extends Seeder
 
                 $pessoas[] = Person::create([
                     'user_id' => $user->id,
+                    'category' => 'client',
                     'type' => 'individual',
                     'name' => $nome,
                     'document' => $this->gerarCpf(),
@@ -255,16 +258,15 @@ class DemoDataSeeder extends Seeder
             'Congelados' => 'CON', 'Bazar' => 'BAZ',
         ];
 
+        $catalogo = array_slice($catalogo, 0, 50);
+
+        $faker = fake('pt_BR');
+
         $produtos = [];
-        $contadorPorGrupo = [];
 
         foreach ($catalogo as $index => [$nome, $nomeGrupo, $custo, $preco]) {
             $grupo = $groups[$nomeGrupo];
-            $sigla = $abreviacoes[$nomeGrupo];
-            $contadorPorGrupo[$sigla] = ($contadorPorGrupo[$sigla] ?? 0) + 1;
-            $sku = sprintf('%s-%04d', $sigla, $contadorPorGrupo[$sigla]);
 
-            // Distribuição de estoque: ~10% sem estoque, ~20% estoque baixo, resto normal
             $minimo = $faker->numberBetween(5, 15);
             $sorteio = $faker->numberBetween(1, 100);
             $estoque = match (true) {
@@ -280,7 +282,7 @@ class DemoDataSeeder extends Seeder
                 'group_id' => $grupo->id,
                 'supplier_id' => $fornecedor?->id,
                 'name' => $nome,
-                'sku' => $sku,
+                // 🔴 AQUI: removido 'sku' => $sku
                 'cost_price' => $custo,
                 'sale_price' => $preco,
                 'stock_quantity' => $estoque,

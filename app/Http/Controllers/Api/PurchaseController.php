@@ -8,6 +8,7 @@ use App\Models\Purchase;
 use App\Services\PurchaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Exception;
 
 class PurchaseController extends Controller
@@ -23,7 +24,6 @@ class PurchaseController extends Controller
     {
         $userId = auth()->id();
 
-        // 🚀 CORREÇÃO 1: Carrega 'items' e 'items.product' para ter acesso aos itens na listagem
         $query = Purchase::with(['supplier', 'user', 'items', 'items.product'])
             ->where('user_id', $userId) // 🔒 escopo por usuário logado
             ->withCount('items')
@@ -59,14 +59,13 @@ class PurchaseController extends Controller
             $query->whereDate('created_at', '<=', $request->get('end_date'));
         }
 
-        // 🚀 CORREÇÃO 2: Calcula o total de compras aguardando recebimento ('pending')
+        // Calcula o total de compras aguardando recebimento ('pending')
         $pendingCount = Purchase::where('user_id', $userId)
             ->where('status', 'pending')
             ->count();
 
         $purchases = $query->paginate($request->get('per_page', 15));
 
-        // Anexa o pending_count à resposta JSON
         $response = $purchases->toArray();
         $response['pending_count'] = $pendingCount;
 
@@ -111,12 +110,21 @@ class PurchaseController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $purchase = Purchase::where('user_id', auth()->id())
+            $userId = auth()->id();
+
+            $purchase = Purchase::where('user_id', $userId)
                 ->findOrFail($id);
 
             if ($request->has('items')) {
                 $validated = $request->validate([
-                    'supplier_id'           => ['nullable', 'uuid', 'exists:suppliers,id'],
+                    // 🔴 AQUI: fornecedor agora vive em "people" (category = supplier)
+                    'supplier_id'           => [
+                        'nullable',
+                        'uuid',
+                        Rule::exists('people', 'id')
+                            ->where('user_id', $userId)
+                            ->where('category', 'supplier'),
+                    ],
                     'discount_value'        => ['nullable', 'numeric', 'min:0'],
                     'discount_percentage'   => ['nullable', 'numeric', 'min:0', 'max:100'],
                     'surcharge_value'       => ['nullable', 'numeric', 'min:0'],
@@ -130,6 +138,7 @@ class PurchaseController extends Controller
                     'items.required'       => 'É necessário adicionar ao menos um item na compra.',
                     'items.*.product_id'   => 'Produto inválido ou não encontrado.',
                     'items.*.quantity.min' => 'A quantidade deve ser de no mínimo 1 item.',
+                    'supplier_id.exists'   => 'Fornecedor inválido ou não encontrado.',
                 ]);
 
                 $purchase = $this->purchaseService->updatePurchase($purchase, $validated);

@@ -18,10 +18,9 @@ return new class extends Migration
             // Código legível da compra (ex: C-1001)
             $table->string('code', 20)->unique();
 
-            // Relacionamento com Fornecedores (UUID)
-            // Removido nullable() e alterado para restrictOnDelete() para impedir a exclusão do fornecedor caso existam compras associadas
+            // Relacionamento com Fornecedores (agora vive em people)
             $table->foreignUuid('supplier_id')
-                ->constrained('suppliers')
+                ->constrained('people')
                 ->restrictOnDelete();
 
             // Relacionamento com Usuário / Responsável pela entrada (UUID)
@@ -52,18 +51,15 @@ return new class extends Migration
         Schema::create('purchase_items', function (Blueprint $table) {
             $table->uuid('id')->primary();
 
-            // Relacionamento com a Compra (UUID)
             $table->foreignUuid('purchase_id')
                 ->constrained('purchases')
                 ->cascadeOnDelete();
 
-            // Relacionamento com Produtos (UUID)
             $table->foreignUuid('product_id')
                 ->nullable()
                 ->constrained('products')
                 ->nullOnDelete();
 
-            // Snapshot do produto no momento da compra
             $table->string('product_name');
             $table->string('product_sku')->nullable();
 

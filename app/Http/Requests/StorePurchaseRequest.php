@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StorePurchaseRequest extends FormRequest
 {
@@ -13,8 +14,17 @@ class StorePurchaseRequest extends FormRequest
 
     public function rules(): array
     {
+        $userId = $this->user()->id;
+
         return [
-            'supplier_id'           => ['nullable', 'uuid', 'exists:suppliers,id'],
+            // 🔴 AQUI: fornecedor agora vive em "people" (category = supplier)
+            'supplier_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('people', 'id')
+                    ->where('user_id', $userId)
+                    ->where('category', 'supplier'),
+            ],
             'discount_value'        => ['nullable', 'numeric', 'min:0'],
             'discount_percentage'   => ['nullable', 'numeric', 'min:0', 'max:100'],
             'surcharge_value'       => ['nullable', 'numeric', 'min:0'],
@@ -35,6 +45,7 @@ class StorePurchaseRequest extends FormRequest
             'items.required'       => 'É necessário adicionar ao menos um item na compra.',
             'items.*.product_id'   => 'Produto inválido ou não encontrado.',
             'items.*.quantity.min' => 'A quantidade deve ser de no mínimo 1 item.',
+            'supplier_id.exists'   => 'Fornecedor inválido ou não encontrado.',
         ];
     }
 }
