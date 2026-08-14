@@ -36,6 +36,9 @@ return new class extends Migration
             $table->text('notes')->nullable(); // Observações gerais
 
             $table->timestamps();
+
+            // 🟢 CORREÇÃO: Garante que o documento é único APENAS dentro da conta do mesmo usuário
+            $table->unique(['user_id', 'document']);
         });
     }
 

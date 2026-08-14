@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Person;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SupplierController extends Controller
 {
@@ -31,10 +32,20 @@ class SupplierController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $userId = $request->user()->id;
+
         $validated = $request->validate([
             'name'               => 'required|string|max:255',
             'trade_name'         => 'nullable|string|max:255',
-            'document'           => 'required|string|max:20|unique:people,document',
+            'document'           => [
+                'required',
+                'string',
+                'max:20',
+                // 🟢 Valida a unicidade APENAS dentro do escopo do mesmo usuário
+                Rule::unique('people', 'document')->where(function ($query) use ($userId) {
+                    return $query->where('user_id', $userId);
+                }),
+            ],
             'state_registration' => 'nullable|string|max:20',
             'email'              => 'nullable|email|max:255',
             'phone'              => 'nullable|string|max:20',
@@ -50,7 +61,7 @@ class SupplierController extends Controller
             'notes'              => 'nullable|string',
         ]);
 
-        $validated['user_id'] = $request->user()->id;
+        $validated['user_id'] = $userId;
         $validated['category'] = 'supplier';
         $validated['type'] = 'company'; // Fornecedor é sempre pessoa jurídica
 
@@ -77,10 +88,23 @@ class SupplierController extends Controller
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 
+        $userId = $request->user()->id;
+
         $validated = $request->validate([
             'name'               => 'sometimes|required|string|max:255',
             'trade_name'         => 'nullable|string|max:255',
-            'document'           => 'sometimes|required|string|max:20|unique:people,document,' . $supplier->id,
+            'document'           => [
+                'sometimes',
+                'required',
+                'string',
+                'max:20',
+                // 🟢 Valida unicidade por usuário ignorando o ID atual durante a edição
+                Rule::unique('people', 'document')
+                    ->where(function ($query) use ($userId) {
+                        return $query->where('user_id', $userId);
+                    })
+                    ->ignore($supplier->id),
+            ],
             'state_registration' => 'nullable|string|max:20',
             'email'              => 'nullable|email|max:255',
             'phone'              => 'nullable|string|max:20',

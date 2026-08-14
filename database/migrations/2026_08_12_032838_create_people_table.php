@@ -14,6 +14,9 @@ return new class extends Migration
         Schema::create('people', function (Blueprint $table) {
             $table->uuid('id')->primary();
 
+            // 🟢 Relacionamento com o usuário dono do registro
+            $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
+
             // Papel da pessoa no sistema
             $table->enum('category', ['client', 'supplier'])->default('client');
 
@@ -23,15 +26,15 @@ return new class extends Migration
             // Identificação
             $table->string('name'); // nome ou razão social
             $table->string('trade_name')->nullable(); // nome fantasia (jurídica)
-            $table->string('document'); // CPF ou CNPJ — unicidade é definida por usuário na migration seguinte 🔴 AQUI
+            $table->string('document'); // CPF ou CNPJ
             $table->string('state_registration')->nullable(); // Inscrição Estadual (jurídica)
             $table->enum('gender', ['male', 'female', 'other'])->nullable(); // física
             $table->date('birth_date')->nullable(); // física
             $table->string('contact_person')->nullable(); // pessoa de contato (jurídica)
 
             // Contato e endereço
-            $table->string('phone')->nullable(); // 🔴 AQUI: opcional, pessoa física pode não ter
-            $table->string('email')->nullable(); // 🔴 AQUI: opcional, pessoa física pode não ter
+            $table->string('phone')->nullable();
+            $table->string('email')->nullable();
             $table->string('zip_code')->nullable();
             $table->string('street')->nullable();
             $table->string('number')->nullable();
@@ -46,6 +49,9 @@ return new class extends Migration
             $table->text('notes')->nullable();
 
             $table->timestamps();
+
+            // 🟢 CORREÇÃO: Garante que o CPF/CNPJ só não pode se repetir DENTRO da conta do MESMO usuário
+            $table->unique(['user_id', 'document']);
         });
     }
 
