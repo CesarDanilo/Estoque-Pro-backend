@@ -7,11 +7,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-
+use App\Traits\CanBeMovedToTrash;
 class Group extends Model
 {
     use HasFactory;
     use HasUuids; // Indica ao Laravel que a chave primária é UUID
+    use CanBeMovedToTrash;
 
     protected $keyType = 'string';
     public $incrementing = false;

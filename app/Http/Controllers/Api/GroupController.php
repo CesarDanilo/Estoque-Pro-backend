@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Group;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class GroupController extends Controller
@@ -132,7 +133,7 @@ class GroupController extends Controller
     }
 
     /**
-     * Remove um grupo.
+     * Remove um grupo movendo-o para a lixeira.
      */
     public function destroy(Request $request, Group $group): JsonResponse
     {
@@ -140,10 +141,31 @@ class GroupController extends Controller
             return response()->json(['message' => 'Não autorizado.'], 403);
         }
 
-        $group->delete();
+        try {
+            // Executa a trait que insere na tabela 'trash' e remove da tabela 'groups'
+            $group->moverParaLixeira();
 
-        return response()->json([
-            'message' => 'Grupo removido com sucesso.',
-        ]);
+            return response()->json([
+                'message' => 'Grupo movido para a lixeira com sucesso.',
+            ]);
+
+        } catch (QueryException $ex) {
+            // Captura violação de Chave Estrangeira do Postgres (ex: produtos associados a este grupo)
+            if ($ex->getCode() === '23503' || str_contains($ex->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'message' => 'Não é possível excluir este grupo pois ele possui produtos cadastrados e vinculados a ele.'
+                ], 409); // 409 Conflict
+            }
+
+            Log::error('Erro ao mover grupo para lixeira', [
+                'error'    => $ex->getMessage(),
+                'group_id' => $group->id,
+                'user_id'  => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao tentar excluir o grupo.',
+            ], 500);
+        }
     }
 }

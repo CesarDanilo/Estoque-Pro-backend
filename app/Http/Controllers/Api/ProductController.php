@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductRequest;
 use App\Models\Product;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
@@ -16,7 +18,7 @@ class ProductController extends Controller
         $query = Product::where('user_id', $request->user()->id)
             ->with(['group', 'supplier']);
 
-        // 🔴 AQUI: busca agora só por nome — SKU não existe mais
+        // Busca por nome
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where('name', 'ilike', "%{$search}%");
@@ -78,11 +80,32 @@ class ProductController extends Controller
     {
         $this->authorizeProductOwnership($request, $product);
 
-        $product->delete();
+        try {
+            // Executa a trait que insere na tabela 'trash' e remove da tabela 'products'
+            $product->moverParaLixeira();
 
-        return response()->json([
-            'message' => 'Produto excluído com sucesso!'
-        ]);
+            return response()->json([
+                'message' => 'Produto movido para a lixeira com sucesso!'
+            ]);
+
+        } catch (QueryException $ex) {
+            // Captura erro de Foreign Key do Postgres (ex: produto em vendas ou itens de compra)
+            if ($ex->getCode() === '23503' || str_contains($ex->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'message' => 'Não é possível excluir este produto pois ele possui vendas, compras ou movimentações vinculadas ao seu histórico.'
+                ], 409); // 409 Conflict
+            }
+
+            Log::error('Erro ao mover produto para lixeira', [
+                'error' => $ex->getMessage(),
+                'product_id' => $product->id,
+                'user_id' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao tentar excluir o produto.'
+            ], 500);
+        }
     }
 
     private function authorizeProductOwnership(Request $request, Product $product): void

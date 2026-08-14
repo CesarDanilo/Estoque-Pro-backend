@@ -6,9 +6,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Traits\CanBeMovedToTrash;
 class Product extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, CanBeMovedToTrash;
 
     protected $fillable = [
         'user_id',

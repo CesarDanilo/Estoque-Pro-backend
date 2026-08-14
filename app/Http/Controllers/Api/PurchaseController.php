@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePurchaseRequest;
 use App\Models\Purchase;
 use App\Services\PurchaseService;
+use Exception;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use Exception;
 
 class PurchaseController extends Controller
 {
@@ -117,7 +119,6 @@ class PurchaseController extends Controller
 
             if ($request->has('items')) {
                 $validated = $request->validate([
-                    // 🔴 AQUI: fornecedor agora vive em "people" (category = supplier)
                     'supplier_id'           => [
                         'nullable',
                         'uuid',
@@ -167,19 +168,51 @@ class PurchaseController extends Controller
     }
 
     /**
-     * Remove uma compra do sistema
+     * Remove uma compra movendo-a para a lixeira
      */
     public function destroy(string $id): JsonResponse
     {
         try {
             $purchase = Purchase::where('user_id', auth()->id())
                 ->findOrFail($id);
-            $purchase->delete();
+
+            // Executa estorno de estoque/regra via Service, se existir
+            if (method_exists($this->purchaseService, 'deletePurchase')) {
+                $this->purchaseService->deletePurchase($purchase);
+            } else {
+                // Move para a lixeira usando a trait
+                $purchase->moverParaLixeira();
+            }
 
             return response()->json([
-                'message' => 'Compra excluída com sucesso!',
+                'message' => 'Compra movida para a lixeira com sucesso!',
             ], 200);
+
+        } catch (QueryException $ex) {
+            // Captura erro de chave estrangeira do PostgreSQL (ex: itens financeiros ou dependências vinculadas)
+            if ($ex->getCode() === '23503' || str_contains($ex->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'message' => 'Não é possível excluir esta compra pois ela possui movimentações ou pendências financeiras vinculadas.'
+                ], 409); // 409 Conflict
+            }
+
+            Log::error('Erro ao mover compra para lixeira', [
+                'error'       => $ex->getMessage(),
+                'purchase_id' => $id,
+                'user_id'     => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao tentar excluir a compra.',
+            ], 500);
+
         } catch (Exception $e) {
+            Log::error('Erro ao excluir compra', [
+                'error'       => $e->getMessage(),
+                'purchase_id' => $id,
+                'user_id'     => auth()->id(),
+            ]);
+
             return response()->json([
                 'message' => 'Erro ao excluir compra: ' . $e->getMessage(),
             ], 422);

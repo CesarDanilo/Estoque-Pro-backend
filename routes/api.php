@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\CpfValidationController;
 use App\Http\Controllers\Api\CnpjValidationController;
 use App\Http\Controllers\Api\EmailValidationController;
+use App\Http\Controllers\TrashController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +28,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+    
+    Route::get('/trash', [TrashController::class, 'index']);
+    Route::post('/trash/{id}/restore', [TrashController::class, 'restaurar']);
+    Route::delete('/trash/{id}/destroy', [TrashController::class, 'destruirPermanente']);
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/summary', [DashboardController::class, 'summary']);

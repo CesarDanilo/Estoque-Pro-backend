@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Person;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -100,24 +102,35 @@ class PersonController extends Controller
     {
         abort_if($person->user_id !== $request->user()->id, 403, 'Acesso não autorizado.');
 
-        $person->delete();
+        try {
+            // Executa a trait que cria o registro no Trash e apaga da tabela original
+            $person->moverParaLixeira();
 
-        return response()->json([
-            'message' => 'Pessoa removida com sucesso.',
-        ]);
+            return response()->json([
+                'message' => 'Pessoa removida para a lixeira com sucesso.',
+            ]);
+        } catch (QueryException $ex) {
+            // Captura violação de Chave Estrangeira (SQLSTATE 23503 do PostgreSQL)
+            if ($ex->getCode() === '23503' || str_contains($ex->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'message' => 'Não é possível excluir esta pessoa pois ela possui compras, vendas ou registros vinculados ao seu histórico.'
+                ], 409); // 409 Conflict
+            }
+
+            Log::error('Erro ao mover pessoa para lixeira', [
+                'error' => $ex->getMessage(),
+                'person_id' => $person->id,
+                'user_id' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao tentar excluir a pessoa.',
+            ], 500);
+        }
     }
 
     /**
      * Regras de validação compartilhadas entre store/update.
-     *
-     * No store, os campos obrigatórios usam 'required' (payload completo).
-     * No update, usam 'sometimes|required' — só são validados (e exigidos)
-     * se vierem no payload, permitindo updates parciais (ex: apenas 'active').
-     *
-     * phone e email não são obrigatórios — pessoa física muitas vezes não
-     * tem os dois preenchidos no momento do cadastro. Campos que só fazem
-     * sentido para pessoa jurídica (state_registration, contact_person) ou
-     * que dependem de endereço completo continuam opcionais.
      */
     private function validatePerson(Request $request, ?string $ignoreId = null, bool $isUpdate = false)
     {
@@ -133,7 +146,6 @@ class PersonController extends Controller
                 ...$requiredRule,
                 'string',
                 'max:20',
-                // 🔴 AQUI: unicidade escopada por usuário, mesmo padrão de groups/products
                 Rule::unique('people', 'document')
                     ->where(fn ($query) => $query->where('user_id', $userId))
                     ->ignore($ignoreId),

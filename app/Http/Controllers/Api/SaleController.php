@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSaleRequest;
 use App\Models\Sale;
 use App\Services\SaleService;
+use Exception;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Exception;
+use Illuminate\Support\Facades\Log;
 
 class SaleController extends Controller
 {
@@ -154,7 +156,7 @@ class SaleController extends Controller
     }
 
     /**
-     * Remove uma venda do sistema
+     * Remove uma venda movendo-a para a lixeira
      */
     public function destroy(string $id): JsonResponse
     {
@@ -162,17 +164,43 @@ class SaleController extends Controller
             $sale = Sale::where('user_id', auth()->id()) // 🔒 escopo por usuário logado
                 ->findOrFail($id);
 
-            // Deleta através do Service se ele possuir regras de estorno de estoque
+            // Se você tiver estorno de estoque/regras de negócio no SaleService
             if (method_exists($this->saleService, 'deleteSale')) {
                 $this->saleService->deleteSale($sale);
             } else {
-                $sale->delete();
+                // Caso contrário, move diretamente para a lixeira
+                $sale->moverParaLixeira();
             }
 
             return response()->json([
-                'message' => 'Venda excluída com sucesso!',
+                'message' => 'Venda movida para a lixeira com sucesso!',
             ], 200);
+
+        } catch (QueryException $ex) {
+            // Captura restrição de Foreign Key (ex: itens financeiros ou registros filhos atrelados)
+            if ($ex->getCode() === '23503' || str_contains($ex->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'message' => 'Não é possível excluir esta venda pois ela possui registros financeiros ou dependências vinculadas.'
+                ], 409); // 409 Conflict
+            }
+
+            Log::error('Erro ao mover venda para lixeira', [
+                'error'   => $ex->getMessage(),
+                'sale_id' => $id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao tentar excluir a venda.',
+            ], 500);
+
         } catch (Exception $e) {
+            Log::error('Erro ao excluir venda', [
+                'error'   => $e->getMessage(),
+                'sale_id' => $id,
+                'user_id' => auth()->id(),
+            ]);
+
             return response()->json([
                 'message' => 'Erro ao excluir venda: ' . $e->getMessage(),
             ], 422);
