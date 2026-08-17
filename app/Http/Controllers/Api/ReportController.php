@@ -232,6 +232,8 @@ class ReportController extends Controller
             ->where('active', true)
             ->whereColumn('stock_quantity', '<=', 'min_stock_quantity')
             ->select('id', 'name', 'stock_quantity', 'min_stock_quantity')
+            ->orderByRaw('CASE WHEN stock_quantity <= 0 THEN 0 ELSE 1 END')
+            ->orderBy('stock_quantity', 'asc')
             ->get()
             ->map(function ($p) {
                 return [
