@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
+use Faker\Factory as Faker;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -79,23 +80,23 @@ class DemoDataSeeder extends Seeder
         return $grupos;
     }
 
-// =========================================================================
-    // FORNECEDORES (25) — agora vivem em people, com category = supplier
+    // =========================================================================
+    // FORNECEDORES (25) — vivem em people, com category = supplier
     // =========================================================================
     private function criarFornecedores(User $user): array
     {
-        $faker = fake('pt_BR');
+        $faker = Faker::create('pt_BR');
         $estados = ['SP', 'RJ', 'MG', 'PR', 'RS', 'SC', 'MS', 'GO', 'BA', 'PE'];
         $fornecedores = [];
 
         for ($i = 1; $i <= 25; $i++) {
             $documento = $this->gerarCnpj();
-            $ativo = $faker->boolean(85); // 85% ativos
+            $ativo = $faker->boolean(85);
 
             $fornecedores[] = Person::create([
                 'user_id' => $user->id,
                 'category' => 'supplier',
-                'type' => 'company', // fornecedor é sempre pessoa jurídica
+                'type' => 'company',
                 'name' => $faker->unique()->company(),
                 'trade_name' => $faker->boolean(60) ? $faker->companySuffix() . ' ' . $faker->word() : null,
                 'document' => $documento,
@@ -123,11 +124,11 @@ class DemoDataSeeder extends Seeder
     // =========================================================================
     private function criarPessoas(User $user): array
     {
-        $faker = fake('pt_BR');
+        $faker = Faker::create('pt_BR');
         $pessoas = [];
 
         for ($i = 1; $i <= 50; $i++) {
-            $ehJuridica = $faker->boolean(30); // 30% pessoa jurídica
+            $ehJuridica = $faker->boolean(30);
 
             if ($ehJuridica) {
                 $pessoas[] = Person::create([
@@ -176,7 +177,6 @@ class DemoDataSeeder extends Seeder
     // =========================================================================
     private function criarProdutos(User $user, array $groups, array $suppliers): array
     {
-        // [nome, grupo, custo, preço de venda]
         $catalogo = [
             ['Coca-Cola 2L', 'Bebidas', 6.50, 9.90],
             ['Suco de Laranja 1L', 'Bebidas', 4.20, 7.50],
@@ -245,23 +245,8 @@ class DemoDataSeeder extends Seeder
             ['Jogo Americano', 'Bazar', 12.00, 24.90],
         ];
 
-        // Garante no máximo 50 registros, mesmo que o catálogo acima tenha mais
         $catalogo = array_slice($catalogo, 0, 50);
-
-        $faker = fake('pt_BR');
-        $abreviacoes = [
-            'Bebidas' => 'BEB', 'Alimentos' => 'ALI', 'Limpeza' => 'LIM', 'Higiene Pessoal' => 'HIG',
-            'Papelaria' => 'PAP', 'Ferramentas' => 'FER', 'Eletrônicos' => 'ELE', 'Vestuário' => 'VES',
-            'Calçados' => 'CAL', 'Brinquedos' => 'BRI', 'Automotivo' => 'AUT', 'Pet Shop' => 'PET',
-            'Jardinagem' => 'JAR', 'Informática' => 'INF', 'Móveis' => 'MOV',
-            'Utilidades Domésticas' => 'UTI', 'Padaria' => 'PAD', 'Frios e Laticínios' => 'FRI',
-            'Congelados' => 'CON', 'Bazar' => 'BAZ',
-        ];
-
-        $catalogo = array_slice($catalogo, 0, 50);
-
-        $faker = fake('pt_BR');
-
+        $faker = Faker::create('pt_BR');
         $produtos = [];
 
         foreach ($catalogo as $index => [$nome, $nomeGrupo, $custo, $preco]) {
@@ -282,7 +267,6 @@ class DemoDataSeeder extends Seeder
                 'group_id' => $grupo->id,
                 'supplier_id' => $fornecedor?->id,
                 'name' => $nome,
-                // 🔴 AQUI: removido 'sku' => $sku
                 'cost_price' => $custo,
                 'sale_price' => $preco,
                 'stock_quantity' => $estoque,
@@ -300,9 +284,8 @@ class DemoDataSeeder extends Seeder
     // =========================================================================
     private function criarVendas(User $user, array $people, array $products): void
     {
-        $faker = fake('pt_BR');
+        $faker = Faker::create('pt_BR');
         $formasPagamento = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito'];
-        // O enum da tabela `sales` só aceita estes três status:
         $statusPossiveis = ['completed', 'completed', 'completed', 'pending', 'pending', 'cancelled'];
 
         for ($i = 1; $i <= 50; $i++) {
@@ -332,7 +315,6 @@ class DemoDataSeeder extends Seeder
             }
             $subtotal = round($subtotal, 2);
 
-            // Desconto: 30% das vendas têm desconto percentual
             $descontoPercentual = 0;
             $descontoValor = 0;
             if ($faker->boolean(30)) {
@@ -340,7 +322,6 @@ class DemoDataSeeder extends Seeder
                 $descontoValor = round($subtotal * ($descontoPercentual / 100), 2);
             }
 
-            // Acréscimo: 10% das vendas têm taxa/acréscimo (ex.: entrega)
             $acrescimoValor = 0;
             if ($faker->boolean(10)) {
                 $acrescimoValor = $faker->randomFloat(2, 5, 20);
@@ -350,7 +331,6 @@ class DemoDataSeeder extends Seeder
 
             $status = $faker->randomElement($statusPossiveis);
 
-            // Data da venda: espalhada nos últimos 45 dias (últimas 5 sempre "recentes")
             $dataVenda = $i > 45
                 ? now()->subDays(50 - $i)->setTime($faker->numberBetween(8, 20), $faker->numberBetween(0, 59))
                 : now()->subDays($faker->numberBetween(1, 45))->setTime($faker->numberBetween(8, 20), $faker->numberBetween(0, 59));
@@ -375,7 +355,7 @@ class DemoDataSeeder extends Seeder
                     'sale_id' => $venda->id,
                     'product_id' => $item['product']->id,
                     'product_name' => $item['product']->name,
-                    'product_sku' => $item['product']->sku,
+                    'product_sku' => $item['product']->sku ?? null,
                     'quantity' => $item['quantity'],
                     'unit_cost_price' => $item['product']->cost_price,
                     'unit_price' => $item['unit_price'],
@@ -383,7 +363,6 @@ class DemoDataSeeder extends Seeder
                 ]);
             }
 
-            // Ajusta created_at/updated_at sem disparar os eventos automáticos do Eloquent
             Sale::query()->where('id', $venda->id)->update([
                 'created_at' => $dataVenda,
                 'updated_at' => $dataVenda,
@@ -392,8 +371,7 @@ class DemoDataSeeder extends Seeder
     }
 
     // =========================================================================
-    // HELPERS: geração de documentos, telefone e CEP válidos no formato do app
-    // (apenas dígitos, sem máscara — igual ao que o front-end envia)
+    // HELPERS
     // =========================================================================
     private function randomDigits(int $quantidade): string
     {
@@ -433,7 +411,7 @@ class DemoDataSeeder extends Seeder
         $pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
 
         do {
-            $base = $this->randomDigits(8) . '0001'; // 12 dígitos (8 aleatórios + filial 0001)
+            $base = $this->randomDigits(8) . '0001';
 
             $soma = 0;
             for ($i = 0; $i < 12; $i++) $soma += (int) $base[$i] * $pesos1[$i];
@@ -457,13 +435,11 @@ class DemoDataSeeder extends Seeder
     {
         $ddds = ['11', '21', '31', '41', '51', '61', '67', '71', '81', '85'];
         $ddd = $ddds[array_rand($ddds)];
-        // celular: DDD + 9 + 8 dígitos = 11 dígitos no total
         return $ddd . '9' . $this->randomDigits(8);
     }
 
     private function gerarCep(): string
     {
-        // 8 dígitos, sem traço (mesmo formato salvo pelo front-end)
         return $this->randomDigits(5) . $this->randomDigits(3);
     }
 }

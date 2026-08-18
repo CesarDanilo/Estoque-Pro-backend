@@ -58,7 +58,42 @@ class SaleController extends Controller
             $query->whereDate('created_at', '<=', $request->get('end_date'));
         }
 
-        $sales = $query->paginate($request->get('per_page', 15));
+        // 🆕 CORRIGIDO: os cards do front (faturamento, ticket médio,
+        // aguardando pagamento) NÃO podem ser calculados em cima de
+        // `sales.data`, porque ali só vem a página atual (8 ou 15 itens,
+        // dependendo do `per_page`). Com mais vendas do que isso, os
+        // números batiam errado — só refletiam a página exibida.
+        //
+        // Por isso, clonamos a query ANTES de paginar (já com todos os
+        // filtros aplicados) e calculamos os agregados sobre o conjunto
+        // INTEIRO que bate com o filtro, não só a página atual.
+        $queryAgregados = clone $query;
+
+        $summary = [
+            // Total de vendas que batem com o filtro (todas as situações)
+            'total_vendas'          => (clone $queryAgregados)->count(),
+
+            // Soma do valor de todas as vendas CONCLUÍDAS que batem com o filtro
+            'faturamento_concluido' => (float) (clone $queryAgregados)
+                ->where('status', 'completed')
+                ->sum('total'),
+
+            // Quantidade de vendas AGUARDANDO PAGAMENTO que batem com o filtro
+            'aguardando_pagamento'  => (clone $queryAgregados)
+                ->where('status', 'pending')
+                ->count(),
+
+            // Ticket médio: faturamento concluído / quantidade de vendas concluídas
+            'ticket_medio'          => (float) (clone $queryAgregados)
+                ->where('status', 'completed')
+                ->avg('total') ?? 0,
+        ];
+
+        // Mantém o formato padrão do paginator do Laravel (current_page,
+        // data, last_page, total, etc.) — é o que o front já espera — e só
+        // acrescenta a chave "summary" com os agregados calculados acima.
+        $sales = $query->paginate($request->get('per_page', 15))->toArray();
+        $sales['summary'] = $summary;
 
         return response()->json($sales);
     }

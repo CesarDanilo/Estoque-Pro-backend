@@ -361,6 +361,33 @@ class ReportController extends Controller
             )
             ->first();
 
+        // -----------------------------------------------------------------
+        // 🔴 AQUI: CORREÇÃO DO BUG.
+        //
+        // Antes, "pessoas_por_faixa_etaria" era montado como um array
+        // associativo (chaves string: '18_25', '26_35', ...). O PHP/Laravel
+        // serializa arrays com chaves string como OBJETO JSON ({...}), não
+        // como array ([...]).
+        //
+        // No front-end (RelatoriosPage.vue), o computed `peopleAgeChartData`
+        // faz `Array.isArray(rawData)` para decidir se usa os dados ou usa
+        // uma lista vazia. Como o back-end mandava um objeto, essa checagem
+        // sempre falhava e o gráfico "Pessoas por faixa etária" ficava
+        // sempre vazio.
+        //
+        // A correção é devolver uma lista (array numérico) de objetos
+        // { faixa, quantidade } — no mesmo formato que "pessoas_por_grupo"
+        // já usa e que funciona corretamente no gráfico de barras.
+        // -----------------------------------------------------------------
+        $pessoasPorFaixaEtaria = [
+            ['faixa' => '18 a 25 anos', 'quantidade' => (int) ($faixasEtarias->f_18_25 ?? 0)],
+            ['faixa' => '26 a 35 anos', 'quantidade' => (int) ($faixasEtarias->f_26_35 ?? 0)],
+            ['faixa' => '36 a 45 anos', 'quantidade' => (int) ($faixasEtarias->f_36_45 ?? 0)],
+            ['faixa' => '46 a 60 anos', 'quantidade' => (int) ($faixasEtarias->f_46_60 ?? 0)],
+            ['faixa' => 'Acima de 60 anos', 'quantidade' => (int) ($faixasEtarias->f_60_plus ?? 0)],
+            ['faixa' => 'Não informado', 'quantidade' => (int) ($faixasEtarias->nao_informado ?? 0)],
+        ];
+
         return response()->json([
             'pessoas_por_grupo' => $pessoasPorGrupo,
             'pessoas_por_genero' => [
@@ -368,14 +395,7 @@ class ReportController extends Controller
                 'masculino' => (int) $generoMasculino,
                 'nao_informado' => (int) $generoNaoInformado,
             ],
-            'pessoas_por_faixa_etaria' => [
-                '18_25' => (int) ($faixasEtarias->f_18_25 ?? 0),
-                '26_35' => (int) ($faixasEtarias->f_26_35 ?? 0),
-                '36_45' => (int) ($faixasEtarias->f_36_45 ?? 0),
-                '46_60' => (int) ($faixasEtarias->f_46_60 ?? 0),
-                '60_plus' => (int) ($faixasEtarias->f_60_plus ?? 0),
-                'nao_informado' => (int) ($faixasEtarias->nao_informado ?? 0),
-            ]
+            'pessoas_por_faixa_etaria' => $pessoasPorFaixaEtaria,
         ]);
     }
 }
