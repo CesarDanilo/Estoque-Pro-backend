@@ -3,7 +3,8 @@ name: Deploy Automatizado na EC2
 on:
   push:
     branches:
-      - main  # Altere para 'master' se a sua branch principal for master
+      - master  # Altere para 'master' se a sua branch principal for master
+  workflow_dispatch:
 
 jobs:
   deploy:
